@@ -1,4 +1,11 @@
-import { EnvironmentHttpApi, EnvironmentHttpCommonError } from "@t3tools/contracts";
+import {
+  AuthAccessTokenType,
+  AuthEnvironmentBootstrapTokenType,
+  AuthEnvironmentOperateScope,
+  AuthTokenExchangeGrantType,
+  EnvironmentHttpApi,
+  EnvironmentHttpCommonError,
+} from "@t3tools/contracts";
 import type {
   EnvironmentHttpBadRequestError,
   EnvironmentHttpForbiddenError,
@@ -168,11 +175,15 @@ export const bootstrapRemoteBearerSession = Effect.fn(
 }) {
   const client = yield* makeEnvironmentHttpApiClient(input.httpBaseUrl);
   return yield* executeRemoteRequest(
-    remoteEndpointUrl(input.httpBaseUrl, "/api/auth/bootstrap/bearer"),
+    remoteEndpointUrl(input.httpBaseUrl, "/api/auth/token"),
     input.timeoutMs ?? DEFAULT_REMOTE_REQUEST_TIMEOUT_MS,
-    client.auth.bootstrapBearer({
+    client.auth.token({
       payload: {
-        credential: input.credential,
+        grant_type: AuthTokenExchangeGrantType,
+        subject_token: input.credential,
+        subject_token_type: AuthEnvironmentBootstrapTokenType,
+        requested_token_type: AuthAccessTokenType,
+        scope: AuthEnvironmentOperateScope,
       },
     }),
   );

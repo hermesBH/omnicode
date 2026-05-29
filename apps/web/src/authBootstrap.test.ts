@@ -113,7 +113,7 @@ describe("resolveInitialServerAuthGateState", () => {
       .mockResolvedValueOnce(
         jsonResponse({
           authenticated: true,
-          role: "owner",
+          scopes: ["environment:operate", "access:manage"],
           sessionMethod: "browser-session-cookie",
           expiresAt: "2026-04-05T00:00:00.000Z",
         }),
@@ -371,7 +371,7 @@ describe("resolveInitialServerAuthGateState", () => {
       .mockResolvedValueOnce(
         jsonResponse({
           authenticated: true,
-          role: "client",
+          scopes: ["environment:operate"],
           sessionMethod: "browser-session-cookie",
           expiresAt: "2026-04-05T00:00:00.000Z",
         }),
@@ -459,7 +459,7 @@ describe("resolveInitialServerAuthGateState", () => {
       .mockResolvedValueOnce(
         jsonResponse({
           authenticated: true,
-          role: "owner",
+          scopes: ["environment:operate", "access:manage"],
           sessionMethod: "browser-session-cookie",
           expiresAt: "2026-04-05T00:00:00.000Z",
         }),

@@ -34,7 +34,7 @@ const isEnvironmentHttpCommonError = Schema.is(EnvironmentHttpCommonError);
 export interface ServerPairingLinkRecord {
   readonly id: string;
   readonly credential: string;
-  readonly role: "owner" | "client";
+  readonly scopes: ReadonlyArray<"environment:operate" | "access:manage">;
   readonly subject: string;
   readonly label?: string;
   readonly createdAt: string;
@@ -44,8 +44,8 @@ export interface ServerPairingLinkRecord {
 export interface ServerClientSessionRecord {
   readonly sessionId: AuthSessionId;
   readonly subject: string;
-  readonly role: "owner" | "client";
-  readonly method: "browser-session-cookie" | "bearer-session-token";
+  readonly scopes: ReadonlyArray<"environment:operate" | "access:manage">;
+  readonly method: "browser-session-cookie" | "bearer-access-token";
   readonly client: AuthClientMetadata;
   readonly issuedAt: string;
   readonly expiresAt: string;
@@ -315,7 +315,7 @@ export async function listServerPairingLinks(): Promise<ReadonlyArray<ServerPair
         return {
           id: pairingLink.id,
           credential: pairingLink.credential,
-          role: pairingLink.role,
+          scopes: pairingLink.scopes,
           subject: pairingLink.subject,
           createdAt: timestamps.createdAt,
           expiresAt: timestamps.expiresAt,
@@ -324,7 +324,7 @@ export async function listServerPairingLinks(): Promise<ReadonlyArray<ServerPair
       return {
         id: pairingLink.id,
         credential: pairingLink.credential,
-        role: pairingLink.role,
+        scopes: pairingLink.scopes,
         subject: pairingLink.subject,
         label: pairingLink.label,
         createdAt: timestamps.createdAt,
@@ -372,7 +372,7 @@ export async function listServerClientSessions(): Promise<
     return clientSessions.map((clientSession) => ({
       sessionId: clientSession.sessionId,
       subject: clientSession.subject,
-      role: clientSession.role,
+      scopes: clientSession.scopes,
       method: clientSession.method,
       client: clientSession.client,
       issuedAt: DateTime.formatIso(clientSession.issuedAt),

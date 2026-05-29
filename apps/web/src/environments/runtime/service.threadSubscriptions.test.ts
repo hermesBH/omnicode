@@ -303,7 +303,7 @@ describe("retainThreadDetailSubscription", () => {
     mockReadSavedEnvironmentBearerToken.mockResolvedValue(null);
     mockFetchRemoteSessionState.mockResolvedValue({
       authenticated: true,
-      role: "client",
+      scopes: ["environment:operate"],
     });
     mockConnectionReconnects.length = 0;
   });

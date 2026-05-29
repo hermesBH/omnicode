@@ -1,4 +1,10 @@
-import type { AuthClientSession, AuthPairingLink } from "@t3tools/contracts";
+import {
+  AuthAccessManageScope,
+  AuthAdministrativeScopes,
+  AuthStandardClientScopes,
+  type AuthClientSession,
+  type AuthPairingLink,
+} from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -21,8 +27,10 @@ import type {
 } from "../Services/AuthControlPlane.ts";
 
 const bySessionPriority = (left: AuthClientSession, right: AuthClientSession) => {
-  if (left.role !== right.role) {
-    return left.role === "owner" ? -1 : 1;
+  const leftCanManage = left.scopes.includes(AuthAccessManageScope);
+  const rightCanManage = right.scopes.includes(AuthAccessManageScope);
+  if (leftCanManage !== rightCanManage) {
+    return leftCanManage ? -1 : 1;
   }
   if (left.connected !== right.connected) {
     return left.connected ? -1 : 1;
@@ -46,7 +54,7 @@ export const makeAuthControlPlane = Effect.gen(function* () {
     Effect.gen(function* () {
       const createdAt = yield* DateTime.now;
       const issued = yield* bootstrapCredentials.issueOneTimeToken({
-        role: input?.role ?? "client",
+        scopes: input?.scopes ?? AuthStandardClientScopes,
         subject: input?.subject ?? "one-time-token",
         ...(input?.ttl ? { ttl: input.ttl } : {}),
         ...(input?.label ? { label: input.label } : {}),
@@ -54,7 +62,7 @@ export const makeAuthControlPlane = Effect.gen(function* () {
       return {
         id: issued.id,
         credential: issued.credential,
-        role: input?.role ?? "client",
+        scopes: input?.scopes ?? AuthStandardClientScopes,
         subject: input?.subject ?? "one-time-token",
         ...(issued.label ? { label: issued.label } : {}),
         createdAt: DateTime.toUtc(createdAt),
@@ -67,9 +75,6 @@ export const makeAuthControlPlane = Effect.gen(function* () {
       Effect.map((pairingLinks) => {
         const activeLinks: Array<AuthPairingLink> = [];
         for (const pairingLink of pairingLinks) {
-          if (input?.role && pairingLink.role !== input.role) {
-            continue;
-          }
           if (input?.excludeSubjects?.includes(pairingLink.subject)) {
             continue;
           }
@@ -78,7 +83,7 @@ export const makeAuthControlPlane = Effect.gen(function* () {
               ? ({
                   id: pairingLink.id,
                   credential: pairingLink.credential,
-                  role: pairingLink.role,
+                  scopes: pairingLink.scopes,
                   subject: pairingLink.subject,
                   label: pairingLink.label,
                   createdAt: pairingLink.createdAt,
@@ -87,7 +92,7 @@ export const makeAuthControlPlane = Effect.gen(function* () {
               : ({
                   id: pairingLink.id,
                   credential: pairingLink.credential,
-                  role: pairingLink.role,
+                  scopes: pairingLink.scopes,
                   subject: pairingLink.subject,
                   createdAt: pairingLink.createdAt,
                   expiresAt: pairingLink.expiresAt,
@@ -110,8 +115,8 @@ export const makeAuthControlPlane = Effect.gen(function* () {
     sessions
       .issue({
         subject: input?.subject ?? DEFAULT_SESSION_SUBJECT,
-        method: "bearer-session-token",
-        role: input?.role ?? "owner",
+        method: "bearer-access-token",
+        scopes: input?.scopes ?? AuthAdministrativeScopes,
         client: {
           ...(input?.label ? { label: input.label } : {}),
           deviceType: "bot",
@@ -120,7 +125,7 @@ export const makeAuthControlPlane = Effect.gen(function* () {
       })
       .pipe(
         Effect.flatMap((issued) => {
-          if (issued.method !== "bearer-session-token") {
+          if (issued.method !== "bearer-access-token") {
             return Effect.fail(
               new AuthControlPlaneError({
                 message: "CLI session issuance produced an unexpected session method.",
@@ -131,8 +136,8 @@ export const makeAuthControlPlane = Effect.gen(function* () {
           return Effect.succeed({
             sessionId: issued.sessionId,
             token: issued.token,
-            method: "bearer-session-token" as const,
-            role: issued.role,
+            method: "bearer-access-token" as const,
+            scopes: issued.scopes,
             subject: input?.subject ?? DEFAULT_SESSION_SUBJECT,
             client: issued.client,
             expiresAt: DateTime.toUtc(issued.expiresAt),

@@ -77,7 +77,7 @@ it.layer(NodeServices.layer)("ServerAuthLive", (it) => {
     }),
   );
 
-  it.effect("issues client pairing credentials by default", () =>
+  it.effect("issues standard pairing credentials by default", () =>
     Effect.gen(function* () {
       const serverAuth = yield* ServerAuth;
 
@@ -91,12 +91,30 @@ it.layer(NodeServices.layer)("ServerAuthLive", (it) => {
       );
 
       expect(verified.sessionId.length).toBeGreaterThan(0);
-      expect(verified.role).toBe("client");
+      expect(verified.scopes).toEqual(["environment:operate"]);
       expect(verified.subject).toBe("one-time-token");
     }).pipe(Effect.provide(makeServerAuthLayer())),
   );
 
-  it.effect("issues startup pairing URLs that bootstrap owner sessions", () =>
+  it.effect("does not exchange ordinary pairing grants for administrative access tokens", () =>
+    Effect.gen(function* () {
+      const serverAuth = yield* ServerAuth;
+      const pairingCredential = yield* serverAuth.issuePairingCredential();
+
+      const error = yield* serverAuth
+        .exchangeBootstrapCredentialForAccessToken(
+          pairingCredential.credential,
+          ["environment:operate", "access:manage"],
+          requestMetadata,
+        )
+        .pipe(Effect.flip);
+
+      expect(error.status).toBe(400);
+      expect(error.message).toContain("exceeds the bootstrap credential grant");
+    }).pipe(Effect.provide(makeServerAuthLayer())),
+  );
+
+  it.effect("issues startup pairing URLs that bootstrap administrative sessions", () =>
     Effect.gen(function* () {
       const serverAuth = yield* ServerAuth;
 
@@ -105,7 +123,9 @@ it.layer(NodeServices.layer)("ServerAuthLive", (it) => {
       const listedPairingLinks = yield* serverAuth.listPairingLinks();
       expect(token).toBeTruthy();
       expect(
-        listedPairingLinks.some((pairingLink) => pairingLink.subject === "owner-bootstrap"),
+        listedPairingLinks.some(
+          (pairingLink) => pairingLink.subject === "administrative-bootstrap",
+        ),
       ).toBe(false);
 
       const exchanged = yield* serverAuth.exchangeBootstrapCredential(token ?? "", requestMetadata);
@@ -113,71 +133,80 @@ it.layer(NodeServices.layer)("ServerAuthLive", (it) => {
         makeCookieRequest(exchanged.sessionToken),
       );
 
-      expect(verified.role).toBe("owner");
-      expect(verified.subject).toBe("owner-bootstrap");
+      expect(verified.scopes).toEqual(["environment:operate", "access:manage"]);
+      expect(verified.subject).toBe("administrative-bootstrap");
     }).pipe(Effect.provide(makeServerAuthLayer())),
   );
 
-  it.effect("lists pairing links and revokes other client sessions while keeping the owner", () =>
-    Effect.gen(function* () {
-      const serverAuth = yield* ServerAuth;
+  it.effect(
+    "lists pairing links and revokes other sessions while keeping the administrative session",
+    () =>
+      Effect.gen(function* () {
+        const serverAuth = yield* ServerAuth;
 
-      const ownerExchange = yield* serverAuth.exchangeBootstrapCredential(
-        "desktop-bootstrap-token",
-        requestMetadata,
-      );
-      const ownerSession = yield* serverAuth.authenticateHttpRequest(
-        makeCookieRequest(ownerExchange.sessionToken),
-      );
-      const pairingCredential = yield* serverAuth.issuePairingCredential({
-        label: "Julius iPhone",
-      });
-      const listedPairingLinks = yield* serverAuth.listPairingLinks();
-      const clientExchange = yield* serverAuth.exchangeBootstrapCredential(
-        pairingCredential.credential,
-        {
-          ...requestMetadata,
-          deviceType: "mobile",
-          os: "iOS",
-          browser: "Safari",
-          ipAddress: "192.168.1.88",
-        },
-      );
-      const clientSession = yield* serverAuth.authenticateHttpRequest(
-        makeCookieRequest(clientExchange.sessionToken),
-      );
-      const clientsBeforeRevoke = yield* serverAuth.listClientSessions(ownerSession.sessionId);
-      const revokedCount = yield* serverAuth.revokeOtherClientSessions(ownerSession.sessionId);
-      const clientsAfterRevoke = yield* serverAuth.listClientSessions(ownerSession.sessionId);
+        const administrativeExchange = yield* serverAuth.exchangeBootstrapCredential(
+          "desktop-bootstrap-token",
+          requestMetadata,
+        );
+        const administrativeSession = yield* serverAuth.authenticateHttpRequest(
+          makeCookieRequest(administrativeExchange.sessionToken),
+        );
+        const pairingCredential = yield* serverAuth.issuePairingCredential({
+          label: "Julius iPhone",
+        });
+        const listedPairingLinks = yield* serverAuth.listPairingLinks();
+        const clientExchange = yield* serverAuth.exchangeBootstrapCredential(
+          pairingCredential.credential,
+          {
+            ...requestMetadata,
+            deviceType: "mobile",
+            os: "iOS",
+            browser: "Safari",
+            ipAddress: "192.168.1.88",
+          },
+        );
+        const clientSession = yield* serverAuth.authenticateHttpRequest(
+          makeCookieRequest(clientExchange.sessionToken),
+        );
+        const clientsBeforeRevoke = yield* serverAuth.listClientSessions(
+          administrativeSession.sessionId,
+        );
+        const revokedCount = yield* serverAuth.revokeOtherClientSessions(
+          administrativeSession.sessionId,
+        );
+        const clientsAfterRevoke = yield* serverAuth.listClientSessions(
+          administrativeSession.sessionId,
+        );
 
-      expect(listedPairingLinks.map((entry) => entry.id)).toContain(pairingCredential.id);
-      expect(listedPairingLinks.find((entry) => entry.id === pairingCredential.id)?.label).toBe(
-        "Julius iPhone",
-      );
-      expect(clientsBeforeRevoke).toHaveLength(2);
-      expect(
-        clientsBeforeRevoke.find((entry) => entry.sessionId === ownerSession.sessionId)?.current,
-      ).toBe(true);
-      expect(
-        clientsBeforeRevoke.find((entry) => entry.sessionId === clientSession.sessionId)?.current,
-      ).toBe(false);
-      expect(
-        clientsBeforeRevoke.find((entry) => entry.sessionId === clientSession.sessionId)?.client
-          .label,
-      ).toBe("Julius iPhone");
-      expect(
-        clientsBeforeRevoke.find((entry) => entry.sessionId === clientSession.sessionId)?.client
-          .deviceType,
-      ).toBe("mobile");
-      expect(revokedCount).toBe(1);
-      expect(clientsAfterRevoke).toHaveLength(1);
-      expect(clientsAfterRevoke[0]?.sessionId).toBe(ownerSession.sessionId);
-    }).pipe(
-      Effect.provide(
-        makeServerAuthLayer({
-          desktopBootstrapToken: "desktop-bootstrap-token",
-        }),
+        expect(listedPairingLinks.map((entry) => entry.id)).toContain(pairingCredential.id);
+        expect(listedPairingLinks.find((entry) => entry.id === pairingCredential.id)?.label).toBe(
+          "Julius iPhone",
+        );
+        expect(clientsBeforeRevoke).toHaveLength(2);
+        expect(
+          clientsBeforeRevoke.find((entry) => entry.sessionId === administrativeSession.sessionId)
+            ?.current,
+        ).toBe(true);
+        expect(
+          clientsBeforeRevoke.find((entry) => entry.sessionId === clientSession.sessionId)?.current,
+        ).toBe(false);
+        expect(
+          clientsBeforeRevoke.find((entry) => entry.sessionId === clientSession.sessionId)?.client
+            .label,
+        ).toBe("Julius iPhone");
+        expect(
+          clientsBeforeRevoke.find((entry) => entry.sessionId === clientSession.sessionId)?.client
+            .deviceType,
+        ).toBe("mobile");
+        expect(revokedCount).toBe(1);
+        expect(clientsAfterRevoke).toHaveLength(1);
+        expect(clientsAfterRevoke[0]?.sessionId).toBe(administrativeSession.sessionId);
+      }).pipe(
+        Effect.provide(
+          makeServerAuthLayer({
+            desktopBootstrapToken: "desktop-bootstrap-token",
+          }),
+        ),
       ),
-    ),
   );
 });

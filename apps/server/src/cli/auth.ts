@@ -1,4 +1,8 @@
-import { AuthSessionId } from "@t3tools/contracts";
+import {
+  AuthAdministrativeScopes,
+  AuthSessionId,
+  AuthStandardClientScopes,
+} from "@t3tools/contracts";
 import * as Console from "effect/Console";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -58,11 +62,6 @@ const jsonFlag = Flag.boolean("json").pipe(
   Flag.withDefault(false),
 );
 
-const sessionRoleFlag = Flag.choice("role", ["owner", "client"]).pipe(
-  Flag.withDescription("Role for the issued bearer session."),
-  Flag.withDefault("owner"),
-);
-
 const labelFlag = Flag.string("label").pipe(
   Flag.withDescription("Optional human-readable label."),
   Flag.optional,
@@ -97,7 +96,7 @@ const pairingCreateCommand = Command.make("create", {
       (authControlPlane) =>
         Effect.gen(function* () {
           const issued = yield* authControlPlane.createPairingLink({
-            role: "client",
+            scopes: AuthStandardClientScopes,
             subject: "one-time-token",
             ...(Option.isSome(flags.ttl) ? { ttl: flags.ttl.value } : {}),
             ...(Option.isSome(flags.label) ? { label: flags.label.value } : {}),
@@ -125,7 +124,7 @@ const pairingListCommand = Command.make("list", {
       flags,
       (authControlPlane) =>
         Effect.gen(function* () {
-          const pairingLinks = yield* authControlPlane.listPairingLinks({ role: "client" });
+          const pairingLinks = yield* authControlPlane.listPairingLinks();
           yield* Console.log(formatPairingCredentialList(pairingLinks, { json: flags.json }));
         }),
       {
@@ -162,20 +161,19 @@ const pairingCommand = Command.make("pairing").pipe(
 const sessionIssueCommand = Command.make("issue", {
   ...authLocationFlags,
   ttl: ttlFlag,
-  role: sessionRoleFlag,
   label: labelFlag,
   subject: subjectFlag,
   tokenOnly: tokenOnlyFlag,
   json: jsonFlag,
 }).pipe(
-  Command.withDescription("Issue a bearer session token for headless or remote clients."),
+  Command.withDescription("Issue a scoped bearer access token for headless or remote clients."),
   Command.withHandler((flags) =>
     runWithAuthControlPlane(
       flags,
       (authControlPlane) =>
         Effect.gen(function* () {
           const issued = yield* authControlPlane.issueSession({
-            role: flags.role,
+            scopes: AuthAdministrativeScopes,
             ...(Option.isSome(flags.ttl) ? { ttl: flags.ttl.value } : {}),
             ...(Option.isSome(flags.label) ? { label: flags.label.value } : {}),
             ...(Option.isSome(flags.subject) ? { subject: flags.subject.value } : {}),

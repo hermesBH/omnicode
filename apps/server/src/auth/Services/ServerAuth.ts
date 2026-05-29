@@ -1,9 +1,10 @@
 import type {
-  AuthBearerBootstrapResult,
+  AuthAccessTokenResult,
   AuthBootstrapResult,
   AuthClientMetadata,
   AuthClientSession,
   AuthCreatePairingCredentialInput,
+  AuthEnvironmentScope,
   AuthPairingLink,
   AuthPairingCredentialResult,
   AuthSessionId,
@@ -17,13 +18,12 @@ import * as DateTime from "effect/DateTime";
 import * as Context from "effect/Context";
 import type * as Effect from "effect/Effect";
 import type * as HttpServerRequest from "effect/unstable/http/HttpServerRequest";
-import type { SessionRole } from "./SessionCredentialService.ts";
 
 export interface AuthenticatedSession {
   readonly sessionId: AuthSessionId;
   readonly subject: string;
   readonly method: ServerAuthSessionMethod;
-  readonly role: SessionRole;
+  readonly scopes: ReadonlyArray<AuthEnvironmentScope>;
   readonly expiresAt?: DateTime.DateTime;
 }
 
@@ -48,13 +48,14 @@ export interface ServerAuthShape {
     },
     AuthError
   >;
-  readonly exchangeBootstrapCredentialForBearerSession: (
+  readonly exchangeBootstrapCredentialForAccessToken: (
     credential: string,
+    requestedScopes: ReadonlyArray<AuthEnvironmentScope>,
     requestMetadata: AuthClientMetadata,
-  ) => Effect.Effect<AuthBearerBootstrapResult, AuthError>;
+  ) => Effect.Effect<AuthAccessTokenResult, AuthError>;
   readonly issuePairingCredential: (
     input?: AuthCreatePairingCredentialInput & {
-      readonly role?: SessionRole;
+      readonly scopes?: ReadonlyArray<AuthEnvironmentScope>;
     },
   ) => Effect.Effect<AuthPairingCredentialResult, AuthError>;
   readonly listPairingLinks: () => Effect.Effect<ReadonlyArray<AuthPairingLink>, AuthError>;

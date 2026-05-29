@@ -1,5 +1,4 @@
 import { describe, expect, it } from "@effect/vitest";
-import * as DateTime from "effect/DateTime";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
@@ -92,11 +91,11 @@ describe("remote", () => {
       const fetch = recordedFetch(
         Response.json(
           {
-            authenticated: true,
-            role: "client",
-            sessionMethod: "bearer-session-token",
-            expiresAt: "2026-05-01T12:00:00.000Z",
-            sessionToken: "bearer-token",
+            access_token: "bearer-token",
+            issued_token_type: "urn:ietf:params:oauth:token-type:access_token",
+            token_type: "Bearer",
+            expires_in: 3600,
+            scope: "environment:operate",
           },
           { status: 200 },
         ),
@@ -108,17 +107,17 @@ describe("remote", () => {
       }).pipe(provideRemoteHttp(fetch.fetchFn));
 
       expect(result).toMatchObject({
-        sessionMethod: "bearer-session-token",
-        sessionToken: "bearer-token",
+        token_type: "Bearer",
+        access_token: "bearer-token",
+        scope: "environment:operate",
       });
-      expect(DateTime.isUtc(result.expiresAt)).toBe(true);
       expectFetchCall(fetch.calls, 1, {
-        url: "https://remote.example.com/api/auth/bootstrap/bearer",
+        url: "https://remote.example.com/api/auth/token",
         method: "POST",
         headers: {
-          "content-type": "application/json",
+          "content-type": "application/x-www-form-urlencoded",
         },
-        body: `{"credential":"pairing-token"}`,
+        body: "grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Atoken-exchange&subject_token=pairing-token&subject_token_type=urn%3At3%3Aparams%3Aoauth%3Atoken-type%3Aenvironment-bootstrap&requested_token_type=urn%3Aietf%3Aparams%3Aoauth%3Atoken-type%3Aaccess_token&scope=environment%3Aoperate",
       });
     }),
   );
@@ -147,11 +146,11 @@ describe("remote", () => {
             auth: {
               policy: "remote-reachable",
               bootstrapMethods: ["one-time-token"],
-              sessionMethods: ["browser-session-cookie", "bearer-session-token"],
+              sessionMethods: ["browser-session-cookie", "bearer-access-token"],
               sessionCookieName: "t3_session",
             },
-            role: "client",
-            sessionMethod: "bearer-session-token",
+            scopes: ["environment:operate"],
+            sessionMethod: "bearer-access-token",
             expiresAt: "2026-05-01T12:00:00.000Z",
           },
           { status: 200 },
@@ -179,7 +178,7 @@ describe("remote", () => {
       }).pipe(provideRemoteHttp(fetch.fetchFn));
       expect(session).toMatchObject({
         authenticated: true,
-        role: "client",
+        scopes: ["environment:operate"],
       });
 
       const token = yield* issueRemoteWebSocketToken({
@@ -256,11 +255,11 @@ describe("remote", () => {
       const fetch = recordedFetch(
         Response.json(
           {
-            authenticated: true,
-            role: "client",
-            sessionMethod: "bearer-session-token",
-            expiresAt: "2026-05-01T12:00:00.000Z",
-            sessionToken: "",
+            access_token: "",
+            issued_token_type: "urn:ietf:params:oauth:token-type:access_token",
+            token_type: "Bearer",
+            expires_in: 3600,
+            scope: "environment:operate",
           },
           { status: 200 },
         ),
@@ -273,7 +272,7 @@ describe("remote", () => {
 
       expect(error).toBeInstanceOf(RemoteEnvironmentAuthInvalidJsonError);
       expect(error.message).toBe(
-        "Remote auth endpoint returned an invalid response from https://remote.example.com/api/auth/bootstrap/bearer.",
+        "Remote auth endpoint returned an invalid response from https://remote.example.com/api/auth/token.",
       );
     }),
   );

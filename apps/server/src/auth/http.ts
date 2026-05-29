@@ -1,12 +1,14 @@
 import {
+  AuthAccessManageScope,
+  AuthEnvironmentOperateScope,
   EnvironmentHttpApi,
   EnvironmentHttpBadRequestError,
   EnvironmentHttpForbiddenError,
   EnvironmentHttpInternalServerError,
-  EnvironmentOwnerAuth,
-  EnvironmentOwnerPrincipal,
-  EnvironmentSessionAuth,
-  EnvironmentSessionPrincipal,
+  EnvironmentAccessManagementAuth,
+  EnvironmentAccessManagementPrincipal,
+  EnvironmentOperationAuth,
+  EnvironmentOperationPrincipal,
   EnvironmentHttpUnauthorizedError,
 } from "@t3tools/contracts";
 import type {
@@ -14,7 +16,10 @@ import type {
   AuthCreatePairingCredentialInput,
   AuthRevokeClientSessionInput,
   AuthRevokePairingLinkInput,
+  AuthTokenExchangeRequest,
+  AuthEnvironmentScope,
 } from "@t3tools/contracts";
+import { parseAllowedOAuthScope } from "@t3tools/shared/oauthScope";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -64,35 +69,43 @@ export const failEnvironmentHttpAuthError = (error: AuthError) =>
     }
   });
 
-export const environmentSessionAuthLayer = Layer.effect(
-  EnvironmentSessionAuth,
+export const environmentOperationAuthLayer = Layer.effect(
+  EnvironmentOperationAuth,
   Effect.gen(function* () {
     const serverAuth = yield* ServerAuth;
     return (httpEffect) =>
       Effect.gen(function* () {
         const request = yield* HttpServerRequest.HttpServerRequest;
         const session = yield* serverAuth.authenticateHttpRequest(request);
-        return yield* httpEffect.pipe(Effect.provideService(EnvironmentSessionPrincipal, session));
-      }).pipe(Effect.catchTag("AuthError", failEnvironmentHttpAuthError));
-  }),
-);
-
-export const environmentOwnerAuthLayer = Layer.effect(
-  EnvironmentOwnerAuth,
-  Effect.gen(function* () {
-    const serverAuth = yield* ServerAuth;
-    return (httpEffect) =>
-      Effect.gen(function* () {
-        const request = yield* HttpServerRequest.HttpServerRequest;
-        const session = yield* serverAuth.authenticateHttpRequest(request);
-        if (session.role !== "owner") {
+        if (!session.scopes.includes(AuthEnvironmentOperateScope)) {
           return yield* new AuthError({
-            message: "Only owner sessions can manage network access.",
+            message: "The authenticated token is missing required scope: environment:operate.",
             status: 403,
           });
         }
         return yield* httpEffect.pipe(
-          Effect.provideService(EnvironmentOwnerPrincipal, { ...session, role: "owner" }),
+          Effect.provideService(EnvironmentOperationPrincipal, session),
+        );
+      }).pipe(Effect.catchTag("AuthError", failEnvironmentHttpAuthError));
+  }),
+);
+
+export const environmentAccessManagementAuthLayer = Layer.effect(
+  EnvironmentAccessManagementAuth,
+  Effect.gen(function* () {
+    const serverAuth = yield* ServerAuth;
+    return (httpEffect) =>
+      Effect.gen(function* () {
+        const request = yield* HttpServerRequest.HttpServerRequest;
+        const session = yield* serverAuth.authenticateHttpRequest(request);
+        if (!session.scopes.includes(AuthAccessManageScope)) {
+          return yield* new AuthError({
+            message: "The authenticated token is missing required scope: access:manage.",
+            status: 403,
+          });
+        }
+        return yield* httpEffect.pipe(
+          Effect.provideService(EnvironmentAccessManagementPrincipal, session),
         );
       }).pipe(Effect.catchTag("AuthError", failEnvironmentHttpAuthError));
   }),
@@ -143,11 +156,25 @@ export const authHttpApiLayer = HttpApiBuilder.group(
       Effect.catchTag("AuthError", failEnvironmentHttpAuthError),
     );
 
-    const bootstrapBearerHandler = Effect.fn("environment.auth.bootstrapBearer")(
-      function* (input: { readonly payload: AuthBootstrapInput }) {
+    const tokenHandler = Effect.fn("environment.auth.token")(
+      function* (input: { readonly payload: AuthTokenExchangeRequest }) {
         const request = yield* HttpServerRequest.HttpServerRequest;
-        return yield* serverAuth.exchangeBootstrapCredentialForBearerSession(
-          input.payload.credential,
+        const requestedScopes = parseAllowedOAuthScope({
+          value: input.payload.scope,
+          allowedScopes: new Set<AuthEnvironmentScope>([
+            AuthEnvironmentOperateScope,
+            AuthAccessManageScope,
+          ]),
+        });
+        if (requestedScopes === null) {
+          return yield* new AuthError({
+            message: "Requested token scope is invalid.",
+            status: 400,
+          });
+        }
+        return yield* serverAuth.exchangeBootstrapCredentialForAccessToken(
+          input.payload.subject_token,
+          requestedScopes,
           deriveAuthClientMetadata({ request }),
         );
       },
@@ -156,7 +183,7 @@ export const authHttpApiLayer = HttpApiBuilder.group(
 
     const webSocketTokenHandler = Effect.fn("environment.auth.webSocketToken")(
       function* () {
-        const session = yield* EnvironmentSessionPrincipal;
+        const session = yield* EnvironmentOperationPrincipal;
         return yield* serverAuth.issueWebSocketToken(session);
       },
       Effect.catchTag("AuthError", failEnvironmentHttpAuthError),
@@ -186,7 +213,7 @@ export const authHttpApiLayer = HttpApiBuilder.group(
 
     const clientsHandler = Effect.fn("environment.auth.clients")(
       function* () {
-        const session = yield* EnvironmentOwnerPrincipal;
+        const session = yield* EnvironmentAccessManagementPrincipal;
         return yield* serverAuth.listClientSessions(session.sessionId);
       },
       Effect.catchTag("AuthError", failEnvironmentHttpAuthError),
@@ -194,7 +221,7 @@ export const authHttpApiLayer = HttpApiBuilder.group(
 
     const revokeClientHandler = Effect.fn("environment.auth.revokeClient")(
       function* (input: { readonly payload: AuthRevokeClientSessionInput }) {
-        const session = yield* EnvironmentOwnerPrincipal;
+        const session = yield* EnvironmentAccessManagementPrincipal;
         const revoked = yield* serverAuth.revokeClientSession(
           session.sessionId,
           input.payload.sessionId,
@@ -206,7 +233,7 @@ export const authHttpApiLayer = HttpApiBuilder.group(
 
     const revokeOtherClientsHandler = Effect.fn("environment.auth.revokeOtherClients")(
       function* () {
-        const session = yield* EnvironmentOwnerPrincipal;
+        const session = yield* EnvironmentAccessManagementPrincipal;
         const revokedCount = yield* serverAuth.revokeOtherClientSessions(session.sessionId);
         return { revokedCount };
       },
@@ -216,7 +243,7 @@ export const authHttpApiLayer = HttpApiBuilder.group(
     return handlers
       .handle("session", sessionHandler)
       .handle("bootstrap", bootstrapHandler)
-      .handle("bootstrapBearer", bootstrapBearerHandler)
+      .handle("token", tokenHandler)
       .handle("webSocketToken", webSocketTokenHandler)
       .handle("pairingCredential", pairingCredentialHandler)
       .handle("pairingLinks", pairingLinksHandler)

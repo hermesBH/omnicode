@@ -53,7 +53,7 @@ it.layer(NodeServices.layer)("BootstrapCredentialServiceLive", (it) => {
       const second = yield* Effect.flip(bootstrapCredentials.consume(issued.credential));
 
       expect(first.method).toBe("one-time-token");
-      expect(first.role).toBe("client");
+      expect(first.scopes).toEqual(["environment:operate"]);
       expect(first.subject).toBe("one-time-token");
       expect(first.label).toBe("Julius iPhone");
       expect(issued.label).toBe("Julius iPhone");
@@ -94,7 +94,7 @@ it.layer(NodeServices.layer)("BootstrapCredentialServiceLive", (it) => {
       const second = yield* Effect.flip(bootstrapCredentials.consume("desktop-bootstrap-token"));
 
       expect(first.method).toBe("desktop-bootstrap");
-      expect(first.role).toBe("owner");
+      expect(first.scopes).toEqual(["environment:operate", "access:manage"]);
       expect(first.subject).toBe("desktop-bootstrap");
       expect(second._tag).toBe("BootstrapCredentialError");
       expect(second.status).toBe(401);
@@ -133,7 +133,9 @@ it.layer(NodeServices.layer)("BootstrapCredentialServiceLive", (it) => {
     Effect.gen(function* () {
       const bootstrapCredentials = yield* BootstrapCredentialService;
       const first = yield* bootstrapCredentials.issueOneTimeToken();
-      const second = yield* bootstrapCredentials.issueOneTimeToken({ role: "owner" });
+      const second = yield* bootstrapCredentials.issueOneTimeToken({
+        scopes: ["environment:operate", "access:manage"],
+      });
 
       const activeBeforeRevoke = yield* bootstrapCredentials.listActive();
       expect(activeBeforeRevoke.map((entry) => entry.id)).toContain(first.id);

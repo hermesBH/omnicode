@@ -8,7 +8,7 @@ import * as HttpApiMiddleware from "effect/unstable/httpapi/HttpApiMiddleware";
 import * as HttpApiSchema from "effect/unstable/httpapi/HttpApiSchema";
 
 import {
-  AuthBearerBootstrapResult,
+  AuthAccessTokenResult,
   AuthBootstrapInput,
   AuthBootstrapResult,
   AuthClientSession,
@@ -17,7 +17,8 @@ import {
   AuthPairingLink,
   AuthRevokeClientSessionInput,
   AuthRevokePairingLinkInput,
-  AuthSessionRole,
+  AuthEnvironmentScopes,
+  AuthTokenExchangeRequest,
   AuthSessionState,
   AuthWebSocketTokenResult,
   ServerAuthSessionMethod,
@@ -101,31 +102,31 @@ export interface EnvironmentSessionPrincipalShape {
   readonly sessionId: AuthSessionId;
   readonly subject: string;
   readonly method: ServerAuthSessionMethod;
-  readonly role: AuthSessionRole;
+  readonly scopes: AuthEnvironmentScopes;
   readonly expiresAt?: DateTime.DateTime;
 }
 
-export class EnvironmentSessionPrincipal extends Context.Service<
-  EnvironmentSessionPrincipal,
+export class EnvironmentOperationPrincipal extends Context.Service<
+  EnvironmentOperationPrincipal,
   EnvironmentSessionPrincipalShape
->()("@t3tools/contracts/environmentHttp/EnvironmentSessionPrincipal") {}
+>()("@t3tools/contracts/environmentHttp/EnvironmentOperationPrincipal") {}
 
-export class EnvironmentOwnerPrincipal extends Context.Service<
-  EnvironmentOwnerPrincipal,
-  EnvironmentSessionPrincipalShape & { readonly role: "owner" }
->()("@t3tools/contracts/environmentHttp/EnvironmentOwnerPrincipal") {}
+export class EnvironmentAccessManagementPrincipal extends Context.Service<
+  EnvironmentAccessManagementPrincipal,
+  EnvironmentSessionPrincipalShape
+>()("@t3tools/contracts/environmentHttp/EnvironmentAccessManagementPrincipal") {}
 
-export class EnvironmentSessionAuth extends HttpApiMiddleware.Service<
-  EnvironmentSessionAuth,
-  { provides: EnvironmentSessionPrincipal }
->()("EnvironmentSessionAuth", {
+export class EnvironmentOperationAuth extends HttpApiMiddleware.Service<
+  EnvironmentOperationAuth,
+  { provides: EnvironmentOperationPrincipal }
+>()("EnvironmentOperationAuth", {
   error: EnvironmentHttpAuthErrors,
 }) {}
 
-export class EnvironmentOwnerAuth extends HttpApiMiddleware.Service<
-  EnvironmentOwnerAuth,
-  { provides: EnvironmentOwnerPrincipal }
->()("EnvironmentOwnerAuth", {
+export class EnvironmentAccessManagementAuth extends HttpApiMiddleware.Service<
+  EnvironmentAccessManagementAuth,
+  { provides: EnvironmentAccessManagementPrincipal }
+>()("EnvironmentAccessManagementAuth", {
   error: EnvironmentHttpAuthErrors,
 }) {}
 
@@ -165,9 +166,9 @@ export class EnvironmentAuthHttpApi extends HttpApiGroup.make("auth")
     }),
   )
   .add(
-    HttpApiEndpoint.post("bootstrapBearer", "/api/auth/bootstrap/bearer", {
-      payload: AuthBootstrapInput,
-      success: AuthBearerBootstrapResult,
+    HttpApiEndpoint.post("token", "/api/auth/token", {
+      payload: AuthTokenExchangeRequest,
+      success: AuthAccessTokenResult,
       error: EnvironmentHttpAuthErrors,
     }),
   )
@@ -176,7 +177,7 @@ export class EnvironmentAuthHttpApi extends HttpApiGroup.make("auth")
       headers: OptionalBearerHeaders,
       success: AuthWebSocketTokenResult,
       error: EnvironmentHttpAuthErrors,
-    }).middleware(EnvironmentSessionAuth),
+    }).middleware(EnvironmentOperationAuth),
   )
   .add(
     HttpApiEndpoint.post("pairingCredential", "/api/auth/pairing-token", {
@@ -184,14 +185,14 @@ export class EnvironmentAuthHttpApi extends HttpApiGroup.make("auth")
       payload: AuthCreatePairingCredentialInput,
       success: AuthPairingCredentialResult,
       error: EnvironmentHttpAuthErrors,
-    }).middleware(EnvironmentOwnerAuth),
+    }).middleware(EnvironmentAccessManagementAuth),
   )
   .add(
     HttpApiEndpoint.get("pairingLinks", "/api/auth/pairing-links", {
       headers: OptionalBearerHeaders,
       success: Schema.Array(AuthPairingLink),
       error: EnvironmentHttpAuthErrors,
-    }).middleware(EnvironmentOwnerAuth),
+    }).middleware(EnvironmentAccessManagementAuth),
   )
   .add(
     HttpApiEndpoint.post("revokePairingLink", "/api/auth/pairing-links/revoke", {
@@ -199,14 +200,14 @@ export class EnvironmentAuthHttpApi extends HttpApiGroup.make("auth")
       payload: AuthRevokePairingLinkInput,
       success: AuthPairingLinkRevokeResult,
       error: EnvironmentHttpAuthErrors,
-    }).middleware(EnvironmentOwnerAuth),
+    }).middleware(EnvironmentAccessManagementAuth),
   )
   .add(
     HttpApiEndpoint.get("clients", "/api/auth/clients", {
       headers: OptionalBearerHeaders,
       success: Schema.Array(AuthClientSession),
       error: EnvironmentHttpAuthErrors,
-    }).middleware(EnvironmentOwnerAuth),
+    }).middleware(EnvironmentAccessManagementAuth),
   )
   .add(
     HttpApiEndpoint.post("revokeClient", "/api/auth/clients/revoke", {
@@ -214,14 +215,14 @@ export class EnvironmentAuthHttpApi extends HttpApiGroup.make("auth")
       payload: AuthRevokeClientSessionInput,
       success: AuthClientSessionRevokeResult,
       error: EnvironmentHttpAuthErrors,
-    }).middleware(EnvironmentOwnerAuth),
+    }).middleware(EnvironmentAccessManagementAuth),
   )
   .add(
     HttpApiEndpoint.post("revokeOtherClients", "/api/auth/clients/revoke-others", {
       headers: OptionalBearerHeaders,
       success: AuthOtherClientSessionsRevokeResult,
       error: EnvironmentHttpAuthErrors,
-    }).middleware(EnvironmentOwnerAuth),
+    }).middleware(EnvironmentAccessManagementAuth),
   ) {}
 
 export class EnvironmentOrchestrationHttpApi extends HttpApiGroup.make("orchestration")
@@ -230,7 +231,7 @@ export class EnvironmentOrchestrationHttpApi extends HttpApiGroup.make("orchestr
       headers: OptionalBearerHeaders,
       success: OrchestrationReadModel,
       error: EnvironmentHttpOrchestrationErrors,
-    }).middleware(EnvironmentOwnerAuth),
+    }).middleware(EnvironmentOperationAuth),
   )
   .add(
     HttpApiEndpoint.post("dispatch", "/api/orchestration/dispatch", {
@@ -238,7 +239,7 @@ export class EnvironmentOrchestrationHttpApi extends HttpApiGroup.make("orchestr
       payload: ClientOrchestrationCommand,
       success: DispatchResult,
       error: EnvironmentHttpOrchestrationErrors,
-    }).middleware(EnvironmentOwnerAuth),
+    }).middleware(EnvironmentOperationAuth),
   ) {}
 
 export class EnvironmentHttpApi extends HttpApi.make("environment")

@@ -1,4 +1,9 @@
-import { AuthSessionId, type AuthClientMetadata, type AuthClientSession } from "@t3tools/contracts";
+import {
+  AuthSessionId,
+  AuthStandardClientScopes,
+  type AuthClientMetadata,
+  type AuthClientSession,
+} from "@t3tools/contracts";
 import * as Clock from "effect/Clock";
 import * as Crypto from "effect/Crypto";
 import * as DateTime from "effect/DateTime";
@@ -40,8 +45,8 @@ const SessionClaims = Schema.Struct({
   kind: Schema.Literal("session"),
   sid: AuthSessionId,
   sub: Schema.String,
-  role: Schema.Literals(["owner", "client"]),
-  method: Schema.Literals(["browser-session-cookie", "bearer-session-token"]),
+  scopes: Schema.Array(Schema.Literals(["environment:operate", "access:manage"])),
+  method: Schema.Literals(["browser-session-cookie", "bearer-access-token"]),
   iat: Schema.Number,
   exp: Schema.Number,
 });
@@ -133,7 +138,7 @@ export const makeSessionCredentialService = Effect.gen(function* () {
         toAuthClientSession({
           sessionId: row.value.sessionId,
           subject: row.value.subject,
-          role: row.value.role,
+          scopes: row.value.scopes,
           method: row.value.method,
           client: toClientMetadata(row.value.client),
           issuedAt: row.value.issuedAt,
@@ -215,7 +220,7 @@ export const makeSessionCredentialService = Effect.gen(function* () {
         kind: "session",
         sid: sessionId,
         sub: input?.subject ?? "browser",
-        role: input?.role ?? "client",
+        scopes: input?.scopes ?? AuthStandardClientScopes,
         method: input?.method ?? "browser-session-cookie",
         iat: issuedAt.epochMilliseconds,
         exp: expiresAt.epochMilliseconds,
@@ -232,7 +237,7 @@ export const makeSessionCredentialService = Effect.gen(function* () {
       yield* authSessions.create({
         sessionId,
         subject: claims.sub,
-        role: claims.role,
+        scopes: claims.scopes,
         method: claims.method,
         client: {
           label: client.label ?? null,
@@ -249,7 +254,7 @@ export const makeSessionCredentialService = Effect.gen(function* () {
         toAuthClientSession({
           sessionId,
           subject: claims.sub,
-          role: claims.role,
+          scopes: claims.scopes,
           method: claims.method,
           client,
           issuedAt,
@@ -265,7 +270,7 @@ export const makeSessionCredentialService = Effect.gen(function* () {
         method: claims.method,
         client,
         expiresAt: expiresAt,
-        role: claims.role,
+        scopes: claims.scopes,
       } satisfies IssuedSession;
     }).pipe(Effect.mapError(toSessionCredentialError("Failed to issue session credential.")));
 
@@ -328,7 +333,7 @@ export const makeSessionCredentialService = Effect.gen(function* () {
         client: toClientMetadata(row.value.client),
         expiresAt: expiresAt.value,
         subject: claims.sub,
-        role: claims.role,
+        scopes: claims.scopes,
       } satisfies VerifiedSession;
     }).pipe(
       Effect.mapError((cause) =>
@@ -428,7 +433,7 @@ export const makeSessionCredentialService = Effect.gen(function* () {
         client: toClientMetadata(row.value.client),
         expiresAt: row.value.expiresAt,
         subject: row.value.subject,
-        role: row.value.role,
+        scopes: row.value.scopes,
       } satisfies VerifiedSession;
     }).pipe(
       Effect.mapError((cause) =>
@@ -451,7 +456,7 @@ export const makeSessionCredentialService = Effect.gen(function* () {
         toAuthClientSession({
           sessionId: row.sessionId,
           subject: row.subject,
-          role: row.role,
+          scopes: row.scopes,
           method: row.method,
           client: toClientMetadata(row.client),
           issuedAt: row.issuedAt,

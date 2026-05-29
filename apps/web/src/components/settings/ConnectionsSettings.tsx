@@ -9,7 +9,10 @@ import {
 } from "lucide-react";
 import { type ReactNode, memo, useCallback, useEffect, useMemo, useState } from "react";
 import {
+  AuthAccessManageScope,
+  AuthAdministrativeScopes,
   type AuthClientSession,
+  type AuthEnvironmentScope,
   type AuthPairingLink,
   type AdvertisedEndpoint,
   type DesktopDiscoveredSshHost,
@@ -112,6 +115,10 @@ function formatAccessTimestamp(value: string): string {
     return value;
   }
   return accessTimestampFormatter.format(parsed);
+}
+
+function formatAccessScopeLabel(scopes: ReadonlyArray<AuthEnvironmentScope>): string {
+  return scopes.includes(AuthAccessManageScope) ? "Administrator" : "Client";
 }
 
 type ConnectionStatusDotProps = {
@@ -629,8 +636,8 @@ const PairingLinkListRow = memo(function PairingLinkListRow({
 
   const expiresAbsolute = formatAccessTimestamp(pairingLink.expiresAt);
 
-  const roleLabel = pairingLink.role === "owner" ? "Owner" : "Client";
-  const primaryLabel = pairingLink.label ?? `${roleLabel} link`;
+  const accessLabel = formatAccessScopeLabel(pairingLink.scopes);
+  const primaryLabel = pairingLink.label ?? `${accessLabel} link`;
   const defaultEndpointCopyOption =
     endpointCopyOptions.find((option) => option.key === defaultEndpointKey) ??
     endpointCopyOptions[0] ??
@@ -759,7 +766,7 @@ const PairingLinkListRow = memo(function PairingLinkListRow({
             </Popover>
           </div>
           <p className="text-xs text-muted-foreground" title={expiresAbsolute}>
-            {[roleLabel, formatExpiresInLabel(pairingLink.expiresAt, nowMs)].join(" · ")}
+            {[accessLabel, formatExpiresInLabel(pairingLink.expiresAt, nowMs)].join(" · ")}
           </p>
           {shareablePairingUrl === null ? (
             <p className="text-[11px] text-muted-foreground/70">
@@ -900,7 +907,7 @@ const ConnectedClientListRow = memo(function ConnectedClientListRow({
     : lastConnectedAt
       ? `Last connected at ${formatAccessTimestamp(lastConnectedAt)}`
       : "Not connected yet.";
-  const roleLabel = clientSession.role === "owner" ? "Owner" : "Client";
+  const accessLabel = formatAccessScopeLabel(clientSession.scopes);
   const deviceInfoBits = [
     clientSession.client.deviceType !== "unknown"
       ? clientSession.client.deviceType[0]?.toUpperCase() + clientSession.client.deviceType.slice(1)
@@ -932,7 +939,7 @@ const ConnectedClientListRow = memo(function ConnectedClientListRow({
             ) : null}
           </div>
           <p className="text-xs text-muted-foreground">
-            {[roleLabel, ...deviceInfoBits].join(" · ")}
+            {[accessLabel, ...deviceInfoBits].join(" · ")}
           </p>
         </div>
         <div className="flex w-full shrink-0 items-center gap-2 sm:w-auto sm:justify-end">
@@ -1290,14 +1297,14 @@ function SavedBackendListRow({
         : connectionState === "error"
           ? "bg-destructive"
           : "bg-muted-foreground/40";
-  const roleLabel = runtime?.role ? (runtime.role === "owner" ? "Owner" : "Client") : null;
+  const accessLabel = runtime?.scopes ? formatAccessScopeLabel(runtime.scopes) : null;
   const descriptorLabel = runtime?.descriptor?.label ?? null;
   const displayLabel = descriptorLabel ?? record.label;
   const statusTooltip = getSavedBackendStatusTooltip(runtime, record, nowMs);
   const versionMismatch = resolveServerConfigVersionMismatch(runtime?.serverConfig);
   const metadataBits = [
     record.desktopSsh ? `SSH ${formatDesktopSshTarget(record.desktopSsh)}` : null,
-    roleLabel,
+    accessLabel,
     record.lastConnectedAt
       ? `Last connected ${formatAccessTimestamp(record.lastConnectedAt)}`
       : null,
@@ -1401,9 +1408,10 @@ const DesktopSshHostRow = memo(function DesktopSshHostRow({
 
 export function ConnectionsSettings() {
   const desktopBridge = window.desktopBridge;
-  const [currentSessionRole, setCurrentSessionRole] = useState<"owner" | "client" | null>(
-    desktopBridge ? "owner" : null,
-  );
+  const [currentSessionScopes, setCurrentSessionScopes] =
+    useState<ReadonlyArray<AuthEnvironmentScope> | null>(
+      desktopBridge ? AuthAdministrativeScopes : null,
+    );
   const [currentAuthPolicy, setCurrentAuthPolicy] = useState<
     "desktop-managed-local" | "loopback-browser" | "remote-reachable" | "unsafe-no-auth" | null
   >(desktopBridge ? null : null);
@@ -1516,7 +1524,7 @@ export function ConnectionsSettings() {
   const setDefaultAdvertisedEndpointKey = useUiStateStore(
     (state) => state.setDefaultAdvertisedEndpointKey,
   );
-  const canManageLocalBackend = currentSessionRole === "owner";
+  const canManageLocalBackend = currentSessionScopes?.includes(AuthAccessManageScope) ?? false;
   const isLocalBackendNetworkAccessible = desktopBridge
     ? desktopServerExposureState?.mode === "network-accessible"
     : currentAuthPolicy === "remote-reachable";
@@ -1931,7 +1939,7 @@ export function ConnectionsSettings() {
 
   useEffect(() => {
     if (desktopBridge) {
-      setCurrentSessionRole("owner");
+      setCurrentSessionScopes(AuthAdministrativeScopes);
       return;
     }
 
@@ -1939,12 +1947,12 @@ export function ConnectionsSettings() {
     void fetchSessionState()
       .then((session) => {
         if (cancelled) return;
-        setCurrentSessionRole(session.authenticated ? (session.role ?? null) : null);
+        setCurrentSessionScopes(session.authenticated ? (session.scopes ?? null) : null);
         setCurrentAuthPolicy(session.auth.policy);
       })
       .catch(() => {
         if (cancelled) return;
-        setCurrentSessionRole(null);
+        setCurrentSessionScopes(null);
         setCurrentAuthPolicy(null);
       });
 
@@ -2065,10 +2073,7 @@ export function ConnectionsSettings() {
     setDesktopAdvertisedEndpoints([]);
     setDesktopServerExposureError(null);
   }, [canManageLocalBackend]);
-  const visibleDesktopPairingLinks = useMemo(
-    () => desktopPairingLinks.filter((pairingLink) => pairingLink.role === "client"),
-    [desktopPairingLinks],
-  );
+  const visibleDesktopPairingLinks = desktopPairingLinks;
   const tailscaleHttpsEndpoint = useMemo(
     () => desktopAdvertisedEndpoints.find(isTailscaleHttpsEndpoint) ?? null,
     [desktopAdvertisedEndpoints],
@@ -2650,8 +2655,8 @@ export function ConnectionsSettings() {
       ) : (
         <SettingsSection title="Local backend access">
           <SettingsRow
-            title="Owner tools"
-            description="Pairing links and client-session management are only available to owner sessions for this backend."
+            title="Administrative access"
+            description="Pairing links and client-session management require the access:manage scope for this backend."
           />
         </SettingsSection>
       )}

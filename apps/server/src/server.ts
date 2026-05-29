@@ -66,8 +66,8 @@ import { ObservabilityLive } from "./observability/Layers/Observability.ts";
 import { ServerEnvironmentLive } from "./environment/Layers/ServerEnvironment.ts";
 import {
   authHttpApiLayer,
-  environmentOwnerAuthLayer,
-  environmentSessionAuthLayer,
+  environmentAccessManagementAuthLayer,
+  environmentOperationAuthLayer,
 } from "./auth/http.ts";
 import { ServerSecretStoreLive } from "./auth/Layers/ServerSecretStore.ts";
 import { ServerAuthLive } from "./auth/Layers/ServerAuth.ts";
@@ -297,8 +297,8 @@ export const makeRoutesLayer = Layer.mergeAll(
     Layer.provide(authHttpApiLayer),
     Layer.provide(orchestrationHttpApiLayer),
     Layer.provide(serverEnvironmentHttpApiLayer),
-    Layer.provide(environmentSessionAuthLayer),
-    Layer.provide(environmentOwnerAuthLayer),
+    Layer.provide(environmentOperationAuthLayer),
+    Layer.provide(environmentAccessManagementAuthLayer),
   ),
   attachmentsRouteLayer,
   otlpTracesProxyRouteLayer,

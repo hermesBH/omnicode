@@ -66,7 +66,7 @@ import type {
   OrchestrationThreadStreamItem,
 } from "./orchestration.ts";
 import { EnvironmentId } from "./baseSchemas.ts";
-import { AuthBearerBootstrapResult, AuthSessionState, AuthWebSocketTokenResult } from "./auth.ts";
+import { AuthAccessTokenResult, AuthSessionState, AuthWebSocketTokenResult } from "./auth.ts";
 import { AdvertisedEndpoint } from "./remoteAccess.ts";
 import { EditorId } from "./editor.ts";
 import { ExecutionEnvironmentDescriptor } from "./environment.ts";
@@ -394,7 +394,7 @@ export interface DesktopBridge {
   bootstrapSshBearerSession: (
     httpBaseUrl: string,
     credential: string,
-  ) => Promise<AuthBearerBootstrapResult>;
+  ) => Promise<AuthAccessTokenResult>;
   fetchSshSessionState: (httpBaseUrl: string, bearerToken: string) => Promise<AuthSessionState>;
   issueSshWebSocketToken: (
     httpBaseUrl: string,

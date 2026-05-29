@@ -3,7 +3,7 @@ import * as Rpc from "effect/unstable/rpc/Rpc";
 import * as RpcGroup from "effect/unstable/rpc/RpcGroup";
 
 import { ExternalLauncherError, LaunchEditorInput } from "./editor.ts";
-import { AuthAccessStreamEvent } from "./auth.ts";
+import { AuthAccessStreamError, AuthAccessStreamEvent } from "./auth.ts";
 import {
   FilesystemBrowseInput,
   FilesystemBrowseResult,
@@ -506,6 +506,7 @@ export const WsSubscribeServerLifecycleRpc = Rpc.make(WS_METHODS.subscribeServer
 export const WsSubscribeAuthAccessRpc = Rpc.make(WS_METHODS.subscribeAuthAccess, {
   payload: Schema.Struct({}),
   success: AuthAccessStreamEvent,
+  error: AuthAccessStreamError,
   stream: true,
 });
 

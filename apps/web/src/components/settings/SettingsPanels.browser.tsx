@@ -217,7 +217,7 @@ function createBaseServerConfig(): ServerConfig {
     auth: {
       policy: "loopback-browser",
       bootstrapMethods: ["one-time-token"],
-      sessionMethods: ["browser-session-cookie", "bearer-session-token"],
+      sessionMethods: ["browser-session-cookie", "bearer-access-token"],
       sessionCookieName: "t3_session",
     },
     cwd: "/repo/project",
@@ -286,7 +286,7 @@ function createEmptyProcessResourceHistoryResult(): ServerProcessResourceHistory
 function makePairingLink(input: {
   readonly id: string;
   readonly credential: string;
-  readonly role: "owner" | "client";
+  readonly scopes: ReadonlyArray<"environment:operate" | "access:manage">;
   readonly subject: string;
   readonly label?: string;
   readonly createdAt: string;
@@ -302,7 +302,7 @@ function makePairingLink(input: {
 function makeClientSession(input: {
   readonly sessionId: string;
   readonly subject: string;
-  readonly role: "owner" | "client";
+  readonly scopes: ReadonlyArray<"environment:operate" | "access:manage">;
   readonly method: "browser-session-cookie";
   readonly client?: {
     readonly label?: string;
@@ -394,22 +394,22 @@ const createDesktopBridgeStub = (overrides?: {
       },
     }),
     bootstrapSshBearerSession: vi.fn().mockResolvedValue({
-      authenticated: true,
-      role: "owner",
-      sessionMethod: "bearer-session-token",
-      expiresAt: "2026-05-01T12:00:00.000Z",
-      sessionToken: "ssh-bearer-token",
+      access_token: "ssh-bearer-token",
+      issued_token_type: "urn:ietf:params:oauth:token-type:access_token",
+      token_type: "Bearer",
+      expires_in: 3_600,
+      scope: "environment:operate",
     }),
     fetchSshSessionState: vi.fn().mockResolvedValue({
       authenticated: true,
       auth: {
         policy: "remote-reachable",
         bootstrapMethods: ["one-time-token"],
-        sessionMethods: ["browser-session-cookie", "bearer-session-token"],
+        sessionMethods: ["browser-session-cookie", "bearer-access-token"],
         sessionCookieName: "t3_session",
       },
-      role: "owner",
-      sessionMethod: "bearer-session-token",
+      scopes: ["environment:operate", "access:manage"],
+      sessionMethod: "bearer-access-token",
       expiresAt: "2026-05-01T12:00:00.000Z",
     }),
     issueSshWebSocketToken: vi.fn().mockResolvedValue({
@@ -508,7 +508,7 @@ describe("GeneralSettingsPanel observability", () => {
         makeClientSession({
           sessionId: "session-owner",
           subject: "browser-owner",
-          role: "owner",
+          scopes: ["environment:operate", "access:manage"],
           method: "browser-session-cookie",
           client: {
             label: "Chrome on Mac",
@@ -531,7 +531,7 @@ describe("GeneralSettingsPanel observability", () => {
           JSON.stringify({
             authenticated: true,
             auth: createBaseServerConfig().auth,
-            role: "owner",
+            scopes: ["environment:operate", "access:manage"],
             sessionMethod: "browser-session-cookie",
             expiresAt: "2036-05-07T00:00:00.000Z",
           }),
@@ -776,7 +776,7 @@ describe("GeneralSettingsPanel observability", () => {
       makeClientSession({
         sessionId: "session-owner",
         subject: "desktop-bootstrap",
-        role: "owner",
+        scopes: ["environment:operate", "access:manage"],
         method: "browser-session-cookie",
         client: {
           label: "This Mac",
@@ -805,7 +805,7 @@ describe("GeneralSettingsPanel observability", () => {
             makePairingLink({
               id: "pairing-link-1",
               credential: "pairing-token",
-              role: "client",
+              scopes: ["environment:operate"],
               subject: "one-time-token",
               label: "Julius iPhone",
               createdAt: "2036-04-07T00:00:00.000Z",
@@ -817,7 +817,7 @@ describe("GeneralSettingsPanel observability", () => {
             makeClientSession({
               sessionId: "session-client",
               subject: "one-time-token",
-              role: "client",
+              scopes: ["environment:operate"],
               method: "browser-session-cookie",
               client: {
                 label: "Julius iPhone",
@@ -893,7 +893,7 @@ describe("GeneralSettingsPanel observability", () => {
       makeClientSession({
         sessionId: "session-owner",
         subject: "desktop-bootstrap",
-        role: "owner",
+        scopes: ["environment:operate", "access:manage"],
         method: "browser-session-cookie",
         client: {
           label: "This Mac",
@@ -909,7 +909,7 @@ describe("GeneralSettingsPanel observability", () => {
       makeClientSession({
         sessionId: "session-client",
         subject: "one-time-token",
-        role: "client",
+        scopes: ["environment:operate"],
         method: "browser-session-cookie",
         client: {
           label: "Julius iPhone",

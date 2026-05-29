@@ -1,5 +1,6 @@
 import {
   CommandId,
+  AuthAdministrativeScopes,
   EnvironmentHttpApi,
   EnvironmentHttpCommonError,
   type OrchestrationReadModel,
@@ -83,7 +84,7 @@ const withProjectCliSessionToken = <A, E, R>(
 ) =>
   Effect.acquireUseRelease(
     authControlPlane.issueSession({
-      role: "owner",
+      scopes: AuthAdministrativeScopes,
       label: "t3 project cli",
     }),
     (issued) => run(issued.token),

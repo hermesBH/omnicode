@@ -9,7 +9,7 @@ import {
   DesktopSshPasswordPromptCancelledType,
   DesktopSshPasswordPromptResolutionInputSchema,
   ExecutionEnvironmentDescriptor,
-  AuthBearerBootstrapResult,
+  AuthAccessTokenResult,
   AuthSessionState,
   AuthWebSocketTokenResult,
 } from "@t3tools/contracts";
@@ -77,7 +77,7 @@ export const fetchSshEnvironmentDescriptor = makeIpcMethod({
 export const bootstrapSshBearerSession = makeIpcMethod({
   channel: IpcChannels.BOOTSTRAP_SSH_BEARER_SESSION_CHANNEL,
   payload: DesktopSshBearerBootstrapInputSchema,
-  result: AuthBearerBootstrapResult,
+  result: AuthAccessTokenResult,
   handler: Effect.fn("desktop.ipc.sshEnvironment.bootstrapBearerSession")(function* ({
     httpBaseUrl,
     credential,

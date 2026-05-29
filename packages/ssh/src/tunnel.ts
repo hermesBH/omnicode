@@ -1026,6 +1026,7 @@ export const fetchLoopbackSshJson = Effect.fn("ssh/tunnel.fetchLoopbackSshJson")
   readonly method?: "GET" | "POST";
   readonly bearerToken?: unknown;
   readonly body?: unknown;
+  readonly formBody?: URLSearchParams;
 }): Effect.fn.Return<T, SshHttpBridgeError, HttpClient.HttpClient> {
   const requestUrl = yield* resolveLoopbackSshHttpUrl(input.httpBaseUrl, input.pathname);
   const bearerToken =
@@ -1038,7 +1039,11 @@ export const fetchLoopbackSshJson = Effect.fn("ssh/tunnel.fetchLoopbackSshJson")
       ? HttpClientRequest.post(requestUrl.toString())
       : HttpClientRequest.get(requestUrl.toString())
   ).pipe(
-    input.body === undefined ? (req) => req : HttpClientRequest.bodyJsonUnsafe(input.body),
+    input.formBody
+      ? HttpClientRequest.bodyUrlParams(input.formBody)
+      : input.body === undefined
+        ? (req) => req
+        : HttpClientRequest.bodyJsonUnsafe(input.body),
     bearerToken
       ? HttpClientRequest.setHeader("authorization", `Bearer ${bearerToken}`)
       : (req) => req,

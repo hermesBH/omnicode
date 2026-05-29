@@ -41,7 +41,7 @@ it.layer(NodeServices.layer)("SessionCredentialServiceLive", (it) => {
       const sessions = yield* SessionCredentialService;
       const issued = yield* sessions.issue({
         subject: "desktop-bootstrap",
-        role: "owner",
+        scopes: ["environment:operate", "access:manage"],
         client: {
           label: "Desktop app",
           deviceType: "desktop",
@@ -54,7 +54,7 @@ it.layer(NodeServices.layer)("SessionCredentialServiceLive", (it) => {
 
       expect(verified.method).toBe("browser-session-cookie");
       expect(verified.subject).toBe("desktop-bootstrap");
-      expect(verified.role).toBe("owner");
+      expect(verified.scopes).toEqual(["environment:operate", "access:manage"]);
       expect(verified.client.label).toBe("Desktop app");
       expect(verified.client.browser).toBe("Electron");
       expect(verified.expiresAt?.toString()).toBe(issued.expiresAt.toString());
@@ -73,14 +73,14 @@ it.layer(NodeServices.layer)("SessionCredentialServiceLive", (it) => {
     Effect.gen(function* () {
       const sessions = yield* SessionCredentialService;
       const issued = yield* sessions.issue({
-        method: "bearer-session-token",
+        method: "bearer-access-token",
         subject: "test-clock",
       });
       const verified = yield* sessions.verify(issued.token);
 
-      expect(verified.method).toBe("bearer-session-token");
+      expect(verified.method).toBe("bearer-access-token");
       expect(verified.subject).toBe("test-clock");
-      expect(verified.role).toBe("client");
+      expect(verified.scopes).toEqual(["environment:operate"]);
     }).pipe(Effect.provide(Layer.merge(makeSessionCredentialLayer(), TestClock.layer()))),
   );
 
@@ -88,7 +88,7 @@ it.layer(NodeServices.layer)("SessionCredentialServiceLive", (it) => {
     Effect.gen(function* () {
       const sessions = yield* SessionCredentialService;
       const issued = yield* sessions.issue({
-        method: "bearer-session-token",
+        method: "bearer-access-token",
         subject: "short-lived",
         ttl: Duration.seconds(1),
       });
@@ -104,9 +104,9 @@ it.layer(NodeServices.layer)("SessionCredentialServiceLive", (it) => {
   it.effect("lists active sessions, tracks connectivity, and revokes other sessions", () =>
     Effect.gen(function* () {
       const sessions = yield* SessionCredentialService;
-      const owner = yield* sessions.issue({
+      const administrative = yield* sessions.issue({
         subject: "desktop-bootstrap",
-        role: "owner",
+        scopes: ["environment:operate", "access:manage"],
         client: {
           label: "Desktop app",
           deviceType: "desktop",
@@ -116,7 +116,7 @@ it.layer(NodeServices.layer)("SessionCredentialServiceLive", (it) => {
       });
       const client = yield* sessions.issue({
         subject: "one-time-token",
-        role: "client",
+        scopes: ["environment:operate"],
         client: {
           label: "Julius iPhone",
           deviceType: "mobile",
@@ -128,7 +128,7 @@ it.layer(NodeServices.layer)("SessionCredentialServiceLive", (it) => {
 
       yield* sessions.markConnected(client.sessionId);
       const beforeRevoke = yield* sessions.listActive();
-      const revokedCount = yield* sessions.revokeAllExcept(owner.sessionId);
+      const revokedCount = yield* sessions.revokeAllExcept(administrative.sessionId);
       const afterRevoke = yield* sessions.listActive();
       const revokedClient = yield* Effect.flip(sessions.verify(client.token));
 
@@ -140,11 +140,12 @@ it.layer(NodeServices.layer)("SessionCredentialServiceLive", (it) => {
         "Julius iPhone",
       );
       expect(
-        beforeRevoke.find((entry) => entry.sessionId === owner.sessionId)?.client.deviceType,
+        beforeRevoke.find((entry) => entry.sessionId === administrative.sessionId)?.client
+          .deviceType,
       ).toBe("desktop");
       expect(revokedCount).toBe(1);
       expect(afterRevoke).toHaveLength(1);
-      expect(afterRevoke[0]?.sessionId).toBe(owner.sessionId);
+      expect(afterRevoke[0]?.sessionId).toBe(administrative.sessionId);
       expect(revokedClient.message).toContain("revoked");
     }).pipe(Effect.provide(makeSessionCredentialLayer())),
   );
@@ -154,7 +155,7 @@ it.layer(NodeServices.layer)("SessionCredentialServiceLive", (it) => {
       const sessions = yield* SessionCredentialService;
       const issued = yield* sessions.issue({
         subject: "reconnect-test",
-        method: "bearer-session-token",
+        method: "bearer-access-token",
       });
 
       const beforeConnect = yield* sessions.listActive();

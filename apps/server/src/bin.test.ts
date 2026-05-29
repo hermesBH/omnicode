@@ -33,7 +33,7 @@ import {
 import { WorkspacePathsLive } from "./workspace/Layers/WorkspacePaths.ts";
 import { ServerSecretStoreLive } from "./auth/Layers/ServerSecretStore.ts";
 import { ServerAuthLive } from "./auth/Layers/ServerAuth.ts";
-import { environmentOwnerAuthLayer } from "./auth/http.ts";
+import { environmentOperationAuthLayer } from "./auth/http.ts";
 
 const CliRuntimeLayer = Layer.mergeAll(NodeServices.layer, NetService.layer);
 class ProjectCliHttpApi extends HttpApi.make("environment").add(EnvironmentOrchestrationHttpApi) {}
@@ -109,7 +109,7 @@ const withLiveProjectCliServer = <A, E, R>(baseDir: string, run: () => Effect.Ef
     const config = yield* makeCliTestServerConfig(baseDir);
     const routesLayer = HttpApiBuilder.layer(ProjectCliHttpApi).pipe(
       Layer.provide(orchestrationHttpApiLayer),
-      Layer.provide(environmentOwnerAuthLayer),
+      Layer.provide(environmentOperationAuthLayer),
     );
     const appLayer = HttpRouter.serve(routesLayer, {
       disableListenLog: true,
@@ -216,7 +216,7 @@ it.layer(NodeServices.layer)("bin cli parsing", (it) => {
       const issued = JSON.parse(issuedOutput.output) as {
         readonly sessionId: string;
         readonly token: string;
-        readonly role: string;
+        readonly scopes: ReadonlyArray<string>;
       };
       const listedOutput = yield* captureStdout(
         runCli(["auth", "session", "list", "--base-dir", baseDir, "--json"]),
@@ -225,15 +225,15 @@ it.layer(NodeServices.layer)("bin cli parsing", (it) => {
       const listed = JSON.parse(listedOutput.output) as ReadonlyArray<{
         readonly sessionId: string;
         readonly token?: string;
-        readonly role: string;
+        readonly scopes: ReadonlyArray<string>;
       }>;
 
       assert.equal(typeof issued.sessionId, "string");
       assert.equal(typeof issued.token, "string");
-      assert.equal(issued.role, "owner");
+      assert.deepEqual(issued.scopes, ["environment:operate", "access:manage"]);
       assert.equal(listed.length, 1);
       assert.equal(listed[0]?.sessionId, issued.sessionId);
-      assert.equal(listed[0]?.role, "owner");
+      assert.deepEqual(listed[0]?.scopes, ["environment:operate", "access:manage"]);
       assert.equal("token" in (listed[0] ?? {}), false);
     }),
   );

@@ -1,8 +1,12 @@
 import {
-  AuthBearerBootstrapResult,
+  AuthAccessTokenResult,
+  AuthAccessTokenType,
+  AuthEnvironmentBootstrapTokenType,
+  AuthEnvironmentOperateScope,
+  AuthTokenExchangeGrantType,
   AuthSessionState,
   AuthWebSocketTokenResult,
-  type AuthBearerBootstrapResult as AuthBearerBootstrapResultType,
+  type AuthAccessTokenResult as AuthAccessTokenResultType,
   type AuthSessionState as AuthSessionStateType,
   type AuthWebSocketTokenResult as AuthWebSocketTokenResultType,
   ExecutionEnvironmentDescriptor,
@@ -39,7 +43,7 @@ export interface DesktopSshRemoteApiShape {
   readonly bootstrapBearerSession: (input: {
     readonly httpBaseUrl: string;
     readonly credential: string;
-  }) => Effect.Effect<AuthBearerBootstrapResultType, DesktopSshRemoteApiError>;
+  }) => Effect.Effect<AuthAccessTokenResultType, DesktopSshRemoteApiError>;
   readonly fetchSessionState: (input: {
     readonly httpBaseUrl: string;
     readonly bearerToken: string;
@@ -58,7 +62,7 @@ export class DesktopSshRemoteApi extends Context.Service<
 const decodeExecutionEnvironmentDescriptor = Schema.decodeUnknownEffect(
   ExecutionEnvironmentDescriptor,
 );
-const decodeAuthBearerBootstrapResult = Schema.decodeUnknownEffect(AuthBearerBootstrapResult);
+const decodeAuthAccessTokenResult = Schema.decodeUnknownEffect(AuthAccessTokenResult);
 const decodeAuthSessionState = Schema.decodeUnknownEffect(AuthSessionState);
 const decodeAuthWebSocketTokenResult = Schema.decodeUnknownEffect(AuthWebSocketTokenResult);
 
@@ -86,11 +90,17 @@ const make = Effect.gen(function* () {
     bootstrapBearerSession: ({ httpBaseUrl, credential }) =>
       fetchLoopbackSshJson<unknown>({
         httpBaseUrl,
-        pathname: "/api/auth/bootstrap/bearer",
+        pathname: "/api/auth/token",
         method: "POST",
-        body: { credential },
+        formBody: new URLSearchParams({
+          grant_type: AuthTokenExchangeGrantType,
+          subject_token: credential,
+          subject_token_type: AuthEnvironmentBootstrapTokenType,
+          requested_token_type: AuthAccessTokenType,
+          scope: AuthEnvironmentOperateScope,
+        }),
       }).pipe(
-        Effect.flatMap(decodeAuthBearerBootstrapResult),
+        Effect.flatMap(decodeAuthAccessTokenResult),
         Effect.mapError(mapError("bootstrap-bearer-session")),
         provideHttpClient,
         Effect.withSpan("desktop.sshRemoteApi.bootstrapBearerSession"),

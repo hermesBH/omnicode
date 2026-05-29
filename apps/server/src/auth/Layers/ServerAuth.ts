@@ -1,11 +1,16 @@
 import {
-  type AuthBearerBootstrapResult,
+  AuthAccessManageScope,
+  AuthAccessTokenType,
+  AuthAdministrativeScopes,
+  AuthStandardClientScopes,
+  type AuthAccessTokenResult,
   type AuthClientSession,
   type AuthBootstrapResult,
   type AuthPairingCredentialResult,
   type AuthSessionState,
   type AuthWebSocketTokenResult,
 } from "@t3tools/contracts";
+import { encodeOAuthScope } from "@t3tools/shared/oauthScope";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -82,7 +87,7 @@ export const makeServerAuth = Effect.gen(function* () {
         sessionId: session.sessionId,
         subject: session.subject,
         method: session.method,
-        role: session.role,
+        scopes: session.scopes,
         ...(session.expiresAt ? { expiresAt: session.expiresAt } : {}),
       })),
       Effect.mapError(
@@ -117,7 +122,7 @@ export const makeServerAuth = Effect.gen(function* () {
           ({
             authenticated: true,
             auth: descriptor,
-            role: session.role,
+            scopes: session.scopes,
             sessionMethod: session.method,
             ...(session.expiresAt ? { expiresAt: DateTime.toUtc(session.expiresAt) } : {}),
           }) satisfies AuthSessionState,
@@ -141,7 +146,7 @@ export const makeServerAuth = Effect.gen(function* () {
           .issue({
             method: "browser-session-cookie",
             subject: grant.subject,
-            role: grant.role,
+            scopes: grant.scopes,
             client: {
               ...requestMetadata,
               ...(grant.label ? { label: grant.label } : {}),
@@ -162,7 +167,7 @@ export const makeServerAuth = Effect.gen(function* () {
           ({
             response: {
               authenticated: true,
-              role: session.role,
+              scopes: session.scopes,
               sessionMethod: session.method,
               expiresAt: DateTime.toUtc(session.expiresAt),
             } satisfies AuthBootstrapResult,
@@ -171,48 +176,66 @@ export const makeServerAuth = Effect.gen(function* () {
       ),
     );
 
-  const exchangeBootstrapCredentialForBearerSession: ServerAuthShape["exchangeBootstrapCredentialForBearerSession"] =
-    (credential, requestMetadata) =>
+  const exchangeBootstrapCredentialForAccessToken: ServerAuthShape["exchangeBootstrapCredentialForAccessToken"] =
+    (credential, requestedScopes, requestMetadata) =>
       bootstrapCredentials.consume(credential).pipe(
         Effect.mapError(toBootstrapExchangeAuthError),
         Effect.flatMap((grant) =>
-          sessions
-            .issue({
-              method: "bearer-session-token",
-              subject: grant.subject,
-              role: grant.role,
-              client: {
-                ...requestMetadata,
-                ...(grant.label ? { label: grant.label } : {}),
-              },
-            })
-            .pipe(
-              Effect.mapError(
-                (cause) =>
-                  new AuthError({
-                    message: "Failed to issue authenticated session.",
-                    cause,
-                  }),
+          requestedScopes.every((scope) => grant.scopes.includes(scope))
+            ? sessions
+                .issue({
+                  method: "bearer-access-token",
+                  subject: grant.subject,
+                  scopes: requestedScopes,
+                  client: {
+                    ...requestMetadata,
+                    ...(grant.label ? { label: grant.label } : {}),
+                  },
+                })
+                .pipe(
+                  Effect.mapError(
+                    (cause) =>
+                      new AuthError({
+                        message: "Failed to issue authenticated access token.",
+                        cause,
+                      }),
+                  ),
+                )
+            : Effect.fail(
+                new AuthError({
+                  message: "Requested scope exceeds the bootstrap credential grant.",
+                  status: 400,
+                }),
               ),
-            ),
         ),
-        Effect.map(
-          (session) =>
-            ({
-              authenticated: true,
-              role: session.role,
-              sessionMethod: "bearer-session-token",
-              expiresAt: DateTime.toUtc(session.expiresAt),
-              sessionToken: session.token,
-            }) satisfies AuthBearerBootstrapResult,
+        Effect.flatMap((session) =>
+          DateTime.now.pipe(
+            Effect.map(
+              (now) =>
+                ({
+                  access_token: session.token,
+                  issued_token_type: AuthAccessTokenType,
+                  token_type: "Bearer",
+                  expires_in: Math.max(
+                    0,
+                    Math.floor(
+                      (session.expiresAt.epochMilliseconds - now.epochMilliseconds) / 1000,
+                    ),
+                  ),
+                  scope: encodeOAuthScope(session.scopes),
+                }) satisfies AuthAccessTokenResult,
+            ),
+          ),
         ),
       );
 
   const issuePairingCredential: ServerAuthShape["issuePairingCredential"] = (input) =>
     authControlPlane
       .createPairingLink({
-        role: input?.role ?? "client",
-        subject: input?.role === "owner" ? "owner-bootstrap" : "one-time-token",
+        scopes: input?.scopes ?? AuthStandardClientScopes,
+        subject: input?.scopes?.includes(AuthAccessManageScope)
+          ? "administrative-bootstrap"
+          : "one-time-token",
         ...(input?.label ? { label: input.label } : {}),
       })
       .pipe(
@@ -235,20 +258,15 @@ export const makeServerAuth = Effect.gen(function* () {
       );
 
   const listPairingLinks: ServerAuthShape["listPairingLinks"] = () =>
-    authControlPlane
-      .listPairingLinks({
-        role: "client",
-        excludeSubjects: ["owner-bootstrap"],
-      })
-      .pipe(
-        Effect.mapError(
-          (cause) =>
-            new AuthError({
-              message: "Failed to load pairing links.",
-              cause,
-            }),
-        ),
-      );
+    authControlPlane.listPairingLinks({ excludeSubjects: ["administrative-bootstrap"] }).pipe(
+      Effect.mapError(
+        (cause) =>
+          new AuthError({
+            message: "Failed to load pairing links.",
+            cause,
+          }),
+      ),
+    );
 
   const revokePairingLink: ServerAuthShape["revokePairingLink"] = (id) =>
     authControlPlane.revokePairingLink(id).pipe(
@@ -287,7 +305,7 @@ export const makeServerAuth = Effect.gen(function* () {
     Effect.gen(function* () {
       if (currentSessionId === targetSessionId) {
         return yield* new AuthError({
-          message: "Use revoke other clients to keep the current owner session active.",
+          message: "Use revoke other clients to keep the current administrative session active.",
           status: 403,
         });
       }
@@ -316,7 +334,7 @@ export const makeServerAuth = Effect.gen(function* () {
     );
 
   const issueStartupPairingUrl: ServerAuthShape["issueStartupPairingUrl"] = (baseUrl) =>
-    issuePairingCredential({ role: "owner" }).pipe(
+    issuePairingCredential({ scopes: AuthAdministrativeScopes }).pipe(
       Effect.map((issued) => {
         const url = new URL(baseUrl);
         url.pathname = "/pair";
@@ -355,7 +373,7 @@ export const makeServerAuth = Effect.gen(function* () {
               sessionId: session.sessionId,
               subject: session.subject,
               method: session.method,
-              role: session.role,
+              scopes: session.scopes,
               ...(session.expiresAt ? { expiresAt: session.expiresAt } : {}),
             })),
             Effect.mapError(
@@ -377,7 +395,7 @@ export const makeServerAuth = Effect.gen(function* () {
     getDescriptor: () => Effect.succeed(descriptor),
     getSessionState,
     exchangeBootstrapCredential,
-    exchangeBootstrapCredentialForBearerSession,
+    exchangeBootstrapCredentialForAccessToken,
     issuePairingCredential,
     listPairingLinks,
     revokePairingLink,
