@@ -15,6 +15,7 @@ import {
   HttpBody,
   HttpClient,
   HttpClientResponse,
+  HttpEffect,
   HttpRouter,
   HttpServerResponse,
   HttpServerRequest,
@@ -59,8 +60,14 @@ export const browserApiCorsLayer = HttpRouter.middleware(
           },
         });
       }
-      const response = yield* httpEffect;
-      return HttpServerResponse.setHeaders(response, browserApiCorsHeaders);
+      HttpEffect.appendPreResponseHandlerUnsafe(
+        request,
+        (
+          _req: HttpServerRequest.HttpServerRequest,
+          response: HttpServerResponse.HttpServerResponse,
+        ) => Effect.succeed(HttpServerResponse.setHeaders(response, browserApiCorsHeaders)),
+      );
+      return yield* httpEffect;
     }),
   { global: true },
 );
