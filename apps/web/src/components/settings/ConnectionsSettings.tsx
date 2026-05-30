@@ -161,28 +161,47 @@ const PAIRING_SCOPE_OPTIONS: ReadonlyArray<{
   },
 ];
 
-function AccessScopeList({
+function AccessScopeSummary({
   scopes,
   label,
 }: {
   readonly scopes: ReadonlyArray<AuthEnvironmentScope>;
   readonly label: string;
 }) {
+  const scopeCountLabel = `${scopes.length} ${scopes.length === 1 ? "scope" : "scopes"}`;
+
   return (
-    <div
-      className="flex flex-wrap items-center gap-1 text-xs text-muted-foreground"
-      aria-label={`${label}: ${scopes.join(", ")}`}
-    >
-      <span className="font-medium">Scopes</span>
-      {scopes.map((scope) => (
-        <code
-          key={scope}
-          className="rounded-md border border-border/60 bg-muted/50 px-1.5 py-0.5 font-mono text-foreground/80"
-        >
-          {scope}
-        </code>
-      ))}
-    </div>
+    <Popover>
+      <PopoverTrigger
+        openOnHover
+        delay={250}
+        closeDelay={100}
+        render={
+          <button
+            type="button"
+            aria-label={`${label}: show ${scopeCountLabel}`}
+            className="cursor-help underline decoration-border underline-offset-2 outline-hidden hover:text-foreground focus-visible:text-foreground"
+          />
+        }
+      >
+        {scopeCountLabel}
+      </PopoverTrigger>
+      <PopoverPopup
+        side="top"
+        align="start"
+        tooltipStyle
+        className="w-max max-w-80 whitespace-normal"
+      >
+        <p className="mb-1 font-medium">Granted scopes</p>
+        <div className="flex flex-col gap-0.5">
+          {scopes.map((scope) => (
+            <code key={scope} className="font-mono text-foreground/85">
+              {scope}
+            </code>
+          ))}
+        </div>
+      </PopoverPopup>
+    </Popover>
   );
 }
 
@@ -831,8 +850,9 @@ const PairingLinkListRow = memo(function PairingLinkListRow({
           </div>
           <p className="text-xs text-muted-foreground" title={expiresAbsolute}>
             {formatExpiresInLabel(pairingLink.expiresAt, nowMs)}
+            <span aria-hidden> · </span>
+            <AccessScopeSummary scopes={pairingLink.scopes} label="Pairing link scopes" />
           </p>
-          <AccessScopeList scopes={pairingLink.scopes} label="Pairing link scopes" />
           {shareablePairingUrl === null ? (
             <p className="text-[11px] text-muted-foreground/70">
               Copy the token and pair from another client using this backend&apos;s reachable host.
@@ -1002,10 +1022,15 @@ const ConnectedClientListRow = memo(function ConnectedClientListRow({
               </span>
             ) : null}
           </div>
-          {deviceInfoBits.length > 0 ? (
-            <p className="text-xs text-muted-foreground">{deviceInfoBits.join(" · ")}</p>
-          ) : null}
-          <AccessScopeList scopes={clientSession.scopes} label="Client scopes" />
+          <p className="text-xs text-muted-foreground">
+            {deviceInfoBits.length > 0 ? (
+              <>
+                {deviceInfoBits.join(" · ")}
+                <span aria-hidden> · </span>
+              </>
+            ) : null}
+            <AccessScopeSummary scopes={clientSession.scopes} label="Client scopes" />
+          </p>
         </div>
         <div className="flex w-full shrink-0 items-center gap-2 sm:w-auto sm:justify-end">
           {!clientSession.current ? (
@@ -1457,11 +1482,14 @@ function SavedBackendListRow({
             />
             <h3 className="text-sm font-medium text-foreground">{displayLabel}</h3>
           </div>
-          {metadataBits.length > 0 ? (
-            <p className="text-xs text-muted-foreground">{metadataBits.join(" · ")}</p>
-          ) : null}
-          {runtime?.scopes ? (
-            <AccessScopeList scopes={runtime.scopes} label="Granted scopes" />
+          {metadataBits.length > 0 || runtime?.scopes ? (
+            <p className="text-xs text-muted-foreground">
+              {metadataBits.length > 0 ? metadataBits.join(" · ") : null}
+              {metadataBits.length > 0 && runtime?.scopes ? <span aria-hidden> · </span> : null}
+              {runtime?.scopes ? (
+                <AccessScopeSummary scopes={runtime.scopes} label="Granted scopes" />
+              ) : null}
+            </p>
           ) : null}
           {versionMismatch ? (
             <p className="flex items-center gap-1 text-warning text-xs">
