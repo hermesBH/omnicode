@@ -7,7 +7,10 @@ import * as Layer from "effect/Layer";
 import type { ServerConfigShape } from "../../config.ts";
 import { ServerConfig } from "../../config.ts";
 import { SqlitePersistenceMemory } from "../../persistence/Layers/Sqlite.ts";
-import { BootstrapCredentialError } from "../Services/BootstrapCredentialService.ts";
+import {
+  BootstrapCredentialInternalError,
+  BootstrapCredentialInvalidError,
+} from "../Services/BootstrapCredentialService.ts";
 import { ServerAuth, type ServerAuthShape } from "../Services/ServerAuth.ts";
 import { ServerAuthLive, toBootstrapExchangeError } from "./ServerAuth.ts";
 import { ServerSecretStoreLive } from "./ServerSecretStore.ts";
@@ -52,9 +55,8 @@ it.layer(NodeServices.layer)("ServerAuthLive", (it) => {
   it.effect("classifies invalid bootstrap credential failures for the HTTP boundary", () =>
     Effect.sync(() => {
       const error = toBootstrapExchangeError(
-        new BootstrapCredentialError({
+        new BootstrapCredentialInvalidError({
           message: "Unknown bootstrap credential.",
-          status: 401,
         }),
       );
 
@@ -68,9 +70,8 @@ it.layer(NodeServices.layer)("ServerAuthLive", (it) => {
   it.effect("maps unexpected bootstrap failures to 500", () =>
     Effect.sync(() => {
       const error = toBootstrapExchangeError(
-        new BootstrapCredentialError({
+        new BootstrapCredentialInternalError({
           message: "Failed to consume bootstrap credential.",
-          status: 500,
           cause: new Error("sqlite is unavailable"),
         }),
       );

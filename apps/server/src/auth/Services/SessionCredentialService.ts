@@ -41,10 +41,21 @@ export type SessionCredentialChange =
       readonly sessionId: AuthSessionId;
     };
 
-export class SessionCredentialError extends Data.TaggedError("SessionCredentialError")<{
+export class SessionCredentialInvalidError extends Data.TaggedError(
+  "SessionCredentialInvalidError",
+)<{
   readonly message: string;
   readonly cause?: unknown;
 }> {}
+
+export class SessionCredentialInternalError extends Data.TaggedError(
+  "SessionCredentialInternalError",
+)<{
+  readonly message: string;
+  readonly cause?: unknown;
+}> {}
+
+export type SessionCredentialError = SessionCredentialInvalidError | SessionCredentialInternalError;
 
 export interface SessionCredentialServiceShape {
   readonly cookieName: string;
@@ -54,7 +65,7 @@ export interface SessionCredentialServiceShape {
     readonly method?: ServerAuthSessionMethod;
     readonly scopes?: ReadonlyArray<AuthEnvironmentScope>;
     readonly client?: AuthClientMetadata;
-  }) => Effect.Effect<IssuedSession, SessionCredentialError>;
+  }) => Effect.Effect<IssuedSession, SessionCredentialInternalError>;
   readonly verify: (token: string) => Effect.Effect<VerifiedSession, SessionCredentialError>;
   readonly issueWebSocketToken: (
     sessionId: AuthSessionId,
@@ -66,20 +77,22 @@ export interface SessionCredentialServiceShape {
       readonly token: string;
       readonly expiresAt: DateTime.DateTime;
     },
-    SessionCredentialError
+    SessionCredentialInternalError
   >;
   readonly verifyWebSocketToken: (
     token: string,
   ) => Effect.Effect<VerifiedSession, SessionCredentialError>;
   readonly listActive: () => Effect.Effect<
     ReadonlyArray<AuthClientSession>,
-    SessionCredentialError
+    SessionCredentialInternalError
   >;
   readonly streamChanges: Stream.Stream<SessionCredentialChange>;
-  readonly revoke: (sessionId: AuthSessionId) => Effect.Effect<boolean, SessionCredentialError>;
+  readonly revoke: (
+    sessionId: AuthSessionId,
+  ) => Effect.Effect<boolean, SessionCredentialInternalError>;
   readonly revokeAllExcept: (
     sessionId: AuthSessionId,
-  ) => Effect.Effect<number, SessionCredentialError>;
+  ) => Effect.Effect<number, SessionCredentialInternalError>;
   readonly markConnected: (sessionId: AuthSessionId) => Effect.Effect<void, never>;
   readonly markDisconnected: (sessionId: AuthSessionId) => Effect.Effect<void, never>;
 }

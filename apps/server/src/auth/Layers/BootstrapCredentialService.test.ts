@@ -62,7 +62,7 @@ it.layer(NodeServices.layer)("BootstrapCredentialServiceLive", (it) => {
       expect(first.subject).toBe("one-time-token");
       expect(first.label).toBe("Julius iPhone");
       expect(issued.label).toBe("Julius iPhone");
-      expect(second._tag).toBe("BootstrapCredentialError");
+      expect(second._tag).toBe("BootstrapCredentialInvalidError");
       expect(second.message).toContain("Unknown bootstrap credential");
     }).pipe(Effect.provide(makeBootstrapCredentialLayer())),
   );
@@ -86,7 +86,7 @@ it.layer(NodeServices.layer)("BootstrapCredentialServiceLive", (it) => {
       expect(successes).toHaveLength(1);
       expect(failures).toHaveLength(7);
       for (const failure of failures) {
-        expect(failure.failure._tag).toBe("BootstrapCredentialError");
+        expect(failure.failure._tag).toBe("BootstrapCredentialInvalidError");
         expect(failure.failure.message).toContain("Unknown bootstrap credential");
       }
     }).pipe(Effect.provide(makeBootstrapCredentialLayer())),
@@ -108,8 +108,7 @@ it.layer(NodeServices.layer)("BootstrapCredentialServiceLive", (it) => {
         "relay:manage",
       ]);
       expect(first.subject).toBe("desktop-bootstrap");
-      expect(second._tag).toBe("BootstrapCredentialError");
-      expect(second.status).toBe(401);
+      expect(second._tag).toBe("BootstrapCredentialInvalidError");
     }).pipe(
       Effect.provide(
         makeBootstrapCredentialLayer({
@@ -126,8 +125,7 @@ it.layer(NodeServices.layer)("BootstrapCredentialServiceLive", (it) => {
       yield* TestClock.adjust(Duration.minutes(6));
       const expired = yield* Effect.flip(bootstrapCredentials.consume("desktop-bootstrap-token"));
 
-      expect(expired._tag).toBe("BootstrapCredentialError");
-      expect(expired.status).toBe(401);
+      expect(expired._tag).toBe("BootstrapCredentialInvalidError");
       expect(expired.message).toContain("Bootstrap credential expired");
     }).pipe(
       Effect.provide(
@@ -161,7 +159,7 @@ it.layer(NodeServices.layer)("BootstrapCredentialServiceLive", (it) => {
       expect(activeAfterRevoke.map((entry) => entry.id)).not.toContain(first.id);
       expect(activeAfterRevoke.map((entry) => entry.id)).toContain(second.id);
       expect(revokedConsume.message).toContain("no longer available");
-      expect(revokedConsume.status).toBe(401);
+      expect(revokedConsume._tag).toBe("BootstrapCredentialInvalidError");
     }).pipe(Effect.provide(makeBootstrapCredentialLayer())),
   );
 });

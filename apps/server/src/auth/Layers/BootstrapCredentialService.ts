@@ -17,8 +17,10 @@ import { ServerConfig } from "../../config.ts";
 import { AuthPairingLinkRepositoryLive } from "../../persistence/Layers/AuthPairingLinks.ts";
 import { AuthPairingLinkRepository } from "../../persistence/Services/AuthPairingLinks.ts";
 import {
-  BootstrapCredentialError,
+  BootstrapCredentialInternalError,
+  BootstrapCredentialInvalidError,
   BootstrapCredentialService,
+  type BootstrapCredentialError,
   type BootstrapCredentialChange,
   type BootstrapCredentialServiceShape,
   type BootstrapGrant,
@@ -70,15 +72,13 @@ export const makeBootstrapCredentialService = Effect.gen(function* () {
   });
 
   const invalidBootstrapCredentialError = (message: string) =>
-    new BootstrapCredentialError({
+    new BootstrapCredentialInvalidError({
       message,
-      status: 401,
     });
 
   const internalBootstrapCredentialError = (message: string, cause: unknown) =>
-    new BootstrapCredentialError({
+    new BootstrapCredentialInternalError({
       message,
-      status: 500,
       cause,
     });
 
@@ -297,7 +297,8 @@ export const makeBootstrapCredentialService = Effect.gen(function* () {
       return yield* invalidBootstrapCredentialError("Bootstrap credential is no longer available.");
     }).pipe(
       Effect.mapError((cause) =>
-        cause instanceof BootstrapCredentialError
+        cause._tag === "BootstrapCredentialInvalidError" ||
+        cause._tag === "BootstrapCredentialInternalError"
           ? cause
           : internalBootstrapCredentialError("Failed to consume bootstrap credential.", cause),
       ),

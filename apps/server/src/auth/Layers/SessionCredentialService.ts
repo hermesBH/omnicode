@@ -22,7 +22,8 @@ import { AuthSessionRepositoryLive } from "../../persistence/Layers/AuthSessions
 import { AuthSessionRepository } from "../../persistence/Services/AuthSessions.ts";
 import { ServerSecretStore } from "../Services/ServerSecretStore.ts";
 import {
-  SessionCredentialError,
+  SessionCredentialInternalError,
+  SessionCredentialInvalidError,
   SessionCredentialService,
   type IssuedSession,
   type SessionCredentialChange,
@@ -109,8 +110,8 @@ export const makeSessionCredentialService = Effect.gen(function* () {
     port: serverConfig.port,
   });
 
-  const toSessionCredentialError = (message: string) => (cause: unknown) =>
-    new SessionCredentialError({
+  const toSessionCredentialInternalError = (message: string) => (cause: unknown) =>
+    new SessionCredentialInternalError({
       message,
       cause,
     });
@@ -230,7 +231,8 @@ export const makeSessionCredentialService = Effect.gen(function* () {
       const encodedPayload = yield* encodeClaims(claims).pipe(
         Effect.map(base64UrlEncode),
         Effect.mapError(
-          (cause) => new SessionCredentialError({ message: "Failed to encode claims", cause }),
+          (cause) =>
+            new SessionCredentialInternalError({ message: "Failed to encode claims", cause }),
         ),
       );
       const signature = signPayload(encodedPayload, signingSecret);
@@ -273,20 +275,22 @@ export const makeSessionCredentialService = Effect.gen(function* () {
         expiresAt: expiresAt,
         scopes: claims.scopes,
       } satisfies IssuedSession;
-    }).pipe(Effect.mapError(toSessionCredentialError("Failed to issue session credential.")));
+    }).pipe(
+      Effect.mapError(toSessionCredentialInternalError("Failed to issue session credential.")),
+    );
 
   const verify: SessionCredentialServiceShape["verify"] = (token) =>
     Effect.gen(function* () {
       const [encodedPayload, signature] = token.split(".");
       if (!encodedPayload || !signature) {
-        return yield* new SessionCredentialError({
+        return yield* new SessionCredentialInvalidError({
           message: "Malformed session token.",
         });
       }
 
       const expectedSignature = signPayload(encodedPayload, signingSecret);
       if (!timingSafeEqualBase64Url(signature, expectedSignature)) {
-        return yield* new SessionCredentialError({
+        return yield* new SessionCredentialInvalidError({
           message: "Invalid session token signature.",
         });
       }
@@ -294,7 +298,7 @@ export const makeSessionCredentialService = Effect.gen(function* () {
       const claims = yield* decodeSessionClaims(base64UrlDecodeUtf8(encodedPayload)).pipe(
         Effect.mapError(
           (cause) =>
-            new SessionCredentialError({
+            new SessionCredentialInvalidError({
               message: "Invalid session token payload.",
               cause,
             }),
@@ -303,26 +307,26 @@ export const makeSessionCredentialService = Effect.gen(function* () {
 
       const now = yield* Clock.currentTimeMillis;
       if (claims.exp <= now) {
-        return yield* new SessionCredentialError({
+        return yield* new SessionCredentialInvalidError({
           message: "Session token expired.",
         });
       }
 
       const row = yield* authSessions.getById({ sessionId: claims.sid });
       if (Option.isNone(row)) {
-        return yield* new SessionCredentialError({
+        return yield* new SessionCredentialInvalidError({
           message: "Unknown session token.",
         });
       }
       if (row.value.revokedAt !== null) {
-        return yield* new SessionCredentialError({
+        return yield* new SessionCredentialInvalidError({
           message: "Session token revoked.",
         });
       }
 
       const expiresAt = DateTime.make(claims.exp);
       if (Option.isNone(expiresAt)) {
-        return yield* new SessionCredentialError({
+        return yield* new SessionCredentialInvalidError({
           message: "Invalid `exp` claim",
         });
       }
@@ -338,9 +342,9 @@ export const makeSessionCredentialService = Effect.gen(function* () {
       } satisfies VerifiedSession;
     }).pipe(
       Effect.mapError((cause) =>
-        cause instanceof SessionCredentialError
+        cause._tag === "SessionCredentialInvalidError"
           ? cause
-          : new SessionCredentialError({
+          : new SessionCredentialInternalError({
               message: "Failed to verify session credential.",
               cause,
             }),
@@ -367,7 +371,8 @@ export const makeSessionCredentialService = Effect.gen(function* () {
       const encodedPayload = yield* encodeWsClaims(claims).pipe(
         Effect.map(base64UrlEncode),
         Effect.mapError(
-          (cause) => new SessionCredentialError({ message: "Failed to encode claims", cause }),
+          (cause) =>
+            new SessionCredentialInternalError({ message: "Failed to encode claims", cause }),
         ),
       );
       const signature = signPayload(encodedPayload, signingSecret);
@@ -375,20 +380,20 @@ export const makeSessionCredentialService = Effect.gen(function* () {
         token: `${encodedPayload}.${signature}`,
         expiresAt,
       };
-    }).pipe(Effect.mapError(toSessionCredentialError("Failed to issue websocket token.")));
+    }).pipe(Effect.mapError(toSessionCredentialInternalError("Failed to issue websocket token.")));
 
   const verifyWebSocketToken: SessionCredentialServiceShape["verifyWebSocketToken"] = (token) =>
     Effect.gen(function* () {
       const [encodedPayload, signature] = token.split(".");
       if (!encodedPayload || !signature) {
-        return yield* new SessionCredentialError({
+        return yield* new SessionCredentialInvalidError({
           message: "Malformed websocket token.",
         });
       }
 
       const expectedSignature = signPayload(encodedPayload, signingSecret);
       if (!timingSafeEqualBase64Url(signature, expectedSignature)) {
-        return yield* new SessionCredentialError({
+        return yield* new SessionCredentialInvalidError({
           message: "Invalid websocket token signature.",
         });
       }
@@ -396,7 +401,7 @@ export const makeSessionCredentialService = Effect.gen(function* () {
       const claims = yield* decodeWebSocketClaims(base64UrlDecodeUtf8(encodedPayload)).pipe(
         Effect.mapError(
           (cause) =>
-            new SessionCredentialError({
+            new SessionCredentialInvalidError({
               message: "Invalid websocket token payload.",
               cause,
             }),
@@ -405,24 +410,24 @@ export const makeSessionCredentialService = Effect.gen(function* () {
 
       const now = yield* Clock.currentTimeMillis;
       if (claims.exp <= now) {
-        return yield* new SessionCredentialError({
+        return yield* new SessionCredentialInvalidError({
           message: "Websocket token expired.",
         });
       }
 
       const row = yield* authSessions.getById({ sessionId: claims.sid });
       if (Option.isNone(row)) {
-        return yield* new SessionCredentialError({
+        return yield* new SessionCredentialInvalidError({
           message: "Unknown websocket session.",
         });
       }
       if (row.value.expiresAt.epochMilliseconds <= now) {
-        return yield* new SessionCredentialError({
+        return yield* new SessionCredentialInvalidError({
           message: "Websocket session expired.",
         });
       }
       if (row.value.revokedAt !== null) {
-        return yield* new SessionCredentialError({
+        return yield* new SessionCredentialInvalidError({
           message: "Websocket session revoked.",
         });
       }
@@ -438,9 +443,9 @@ export const makeSessionCredentialService = Effect.gen(function* () {
       } satisfies VerifiedSession;
     }).pipe(
       Effect.mapError((cause) =>
-        cause instanceof SessionCredentialError
+        cause._tag === "SessionCredentialInvalidError"
           ? cause
-          : new SessionCredentialError({
+          : new SessionCredentialInternalError({
               message: "Failed to verify websocket token.",
               cause,
             }),
@@ -466,7 +471,7 @@ export const makeSessionCredentialService = Effect.gen(function* () {
           connected: connectedSessions.has(row.sessionId),
         }),
       );
-    }).pipe(Effect.mapError(toSessionCredentialError("Failed to list active sessions.")));
+    }).pipe(Effect.mapError(toSessionCredentialInternalError("Failed to list active sessions.")));
 
   const revoke: SessionCredentialServiceShape["revoke"] = (sessionId) =>
     Effect.gen(function* () {
@@ -484,7 +489,7 @@ export const makeSessionCredentialService = Effect.gen(function* () {
         yield* emitRemoved(sessionId);
       }
       return revoked;
-    }).pipe(Effect.mapError(toSessionCredentialError("Failed to revoke session.")));
+    }).pipe(Effect.mapError(toSessionCredentialInternalError("Failed to revoke session.")));
 
   const revokeAllExcept: SessionCredentialServiceShape["revokeAllExcept"] = (sessionId) =>
     Effect.gen(function* () {
@@ -511,7 +516,7 @@ export const makeSessionCredentialService = Effect.gen(function* () {
         );
       }
       return revokedSessionIds.length;
-    }).pipe(Effect.mapError(toSessionCredentialError("Failed to revoke other sessions.")));
+    }).pipe(Effect.mapError(toSessionCredentialInternalError("Failed to revoke other sessions.")));
 
   return {
     cookieName,

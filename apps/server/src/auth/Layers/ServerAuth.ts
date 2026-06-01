@@ -22,8 +22,10 @@ import {
   INTERNAL_ADMINISTRATIVE_BOOTSTRAP_SUBJECT,
 } from "../Services/AuthControlPlane.ts";
 import { ServerAuthPolicyLive } from "./ServerAuthPolicy.ts";
-import { BootstrapCredentialService } from "../Services/BootstrapCredentialService.ts";
-import { BootstrapCredentialError } from "../Services/BootstrapCredentialService.ts";
+import {
+  type BootstrapCredentialError,
+  BootstrapCredentialService,
+} from "../Services/BootstrapCredentialService.ts";
 import { ServerAuthPolicy } from "../Services/ServerAuthPolicy.ts";
 import {
   ServerAuth,
@@ -35,7 +37,7 @@ import {
   type ServerAuthShape,
 } from "../Services/ServerAuth.ts";
 import {
-  SessionCredentialError,
+  type SessionCredentialError,
   SessionCredentialService,
 } from "../Services/SessionCredentialService.ts";
 import { AuthControlPlaneLive, AuthCoreLive } from "./AuthControlPlane.ts";
@@ -51,7 +53,7 @@ const WEBSOCKET_TICKET_QUERY_PARAM = "wsTicket";
 export function toBootstrapExchangeError(
   cause: BootstrapCredentialError,
 ): ServerAuthInvalidCredentialError | ServerAuthInternalError {
-  if (cause.status === 500) {
+  if (cause._tag === "BootstrapCredentialInternalError") {
     return new ServerAuthInternalError({
       message: "Failed to validate bootstrap credential.",
       cause,
@@ -63,6 +65,23 @@ export function toBootstrapExchangeError(
     cause,
   });
 }
+
+const mapSessionVerificationErrors = <A, R>(
+  effect: Effect.Effect<A, SessionCredentialError, R>,
+): Effect.Effect<A, ServerAuthInvalidCredentialError | ServerAuthInternalError, R> =>
+  effect.pipe(
+    Effect.catchTags({
+      SessionCredentialInvalidError: (cause) =>
+        Effect.fail(new ServerAuthInvalidCredentialError({ reason: "invalid_credential", cause })),
+      SessionCredentialInternalError: (cause) =>
+        Effect.fail(
+          new ServerAuthInternalError({
+            message: "Failed to validate session credential.",
+            cause,
+          }),
+        ),
+    }),
+  );
 
 function parseBearerToken(request: HttpServerRequest.HttpServerRequest): string | null {
   const header = request.headers["authorization"];
@@ -82,9 +101,12 @@ export const makeServerAuth = Effect.gen(function* () {
 
   const authenticateToken = (
     token: string,
-  ): Effect.Effect<AuthenticatedSession, ServerAuthInvalidCredentialError> =>
+  ): Effect.Effect<
+    AuthenticatedSession,
+    ServerAuthInvalidCredentialError | ServerAuthInternalError
+  > =>
     sessions.verify(token).pipe(
-      Effect.tapError((cause: SessionCredentialError) =>
+      Effect.tapErrorTag("SessionCredentialInvalidError", (cause) =>
         Effect.logWarning("Rejected authenticated session credential.").pipe(
           Effect.annotateLogs({
             reason: cause.message,
@@ -98,9 +120,7 @@ export const makeServerAuth = Effect.gen(function* () {
         scopes: session.scopes,
         ...(session.expiresAt ? { expiresAt: session.expiresAt } : {}),
       })),
-      Effect.mapError(
-        (cause) => new ServerAuthInvalidCredentialError({ reason: "invalid_credential", cause }),
-      ),
+      mapSessionVerificationErrors,
     );
 
   const authenticateRequest = (request: HttpServerRequest.HttpServerRequest) => {
@@ -391,10 +411,7 @@ export const makeServerAuth = Effect.gen(function* () {
               scopes: session.scopes,
               ...(session.expiresAt ? { expiresAt: session.expiresAt } : {}),
             })),
-            Effect.mapError(
-              (cause) =>
-                new ServerAuthInvalidCredentialError({ reason: "invalid_credential", cause }),
-            ),
+            mapSessionVerificationErrors,
           );
         }
       }

@@ -18,11 +18,22 @@ export interface BootstrapGrant {
   readonly expiresAt: DateTime.DateTime;
 }
 
-export class BootstrapCredentialError extends Data.TaggedError("BootstrapCredentialError")<{
+export class BootstrapCredentialInvalidError extends Data.TaggedError(
+  "BootstrapCredentialInvalidError",
+)<{
   readonly message: string;
-  readonly status?: 401 | 500;
+}> {}
+
+export class BootstrapCredentialInternalError extends Data.TaggedError(
+  "BootstrapCredentialInternalError",
+)<{
+  readonly message: string;
   readonly cause?: unknown;
 }> {}
+
+export type BootstrapCredentialError =
+  | BootstrapCredentialInvalidError
+  | BootstrapCredentialInternalError;
 
 export interface IssuedBootstrapCredential {
   readonly id: string;
@@ -47,13 +58,13 @@ export interface BootstrapCredentialServiceShape {
     readonly scopes?: ReadonlyArray<AuthEnvironmentScope>;
     readonly subject?: string;
     readonly label?: string;
-  }) => Effect.Effect<IssuedBootstrapCredential, BootstrapCredentialError>;
+  }) => Effect.Effect<IssuedBootstrapCredential, BootstrapCredentialInternalError>;
   readonly listActive: () => Effect.Effect<
     ReadonlyArray<AuthPairingLink>,
-    BootstrapCredentialError
+    BootstrapCredentialInternalError
   >;
   readonly streamChanges: Stream.Stream<BootstrapCredentialChange>;
-  readonly revoke: (id: string) => Effect.Effect<boolean, BootstrapCredentialError>;
+  readonly revoke: (id: string) => Effect.Effect<boolean, BootstrapCredentialInternalError>;
   readonly consume: (credential: string) => Effect.Effect<BootstrapGrant, BootstrapCredentialError>;
 }
 

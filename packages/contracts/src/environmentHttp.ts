@@ -232,6 +232,7 @@ export class EnvironmentAuthHttpApi extends HttpApiGroup.make("auth")
     HttpApiEndpoint.get("session", "/api/auth/session", {
       headers: OptionalBearerHeaders,
       success: AuthSessionState,
+      error: [EnvironmentInternalError],
     }),
   )
   .add(

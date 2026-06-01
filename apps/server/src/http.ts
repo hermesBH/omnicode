@@ -37,6 +37,7 @@ import {
   annotateEnvironmentRequest,
   failEnvironmentScopeRequired,
   failEnvironmentAuthInvalid,
+  failEnvironmentInternal,
 } from "./auth/http.ts";
 import { ServerEnvironment } from "./environment/Services/ServerEnvironment.ts";
 import { browserApiCorsAllowedHeaders, browserApiCorsAllowedMethods } from "./httpCors.ts";
@@ -74,13 +75,12 @@ const authenticateRawRouteWithScope = (
   Effect.gen(function* () {
     const request = yield* HttpServerRequest.HttpServerRequest;
     const serverAuth = yield* ServerAuth;
-    const session = yield* serverAuth
-      .authenticateHttpRequest(request)
-      .pipe(
-        Effect.catchTag("ServerAuthInvalidCredentialError", (error) =>
-          failEnvironmentAuthInvalid(error.reason),
-        ),
-      );
+    const session = yield* serverAuth.authenticateHttpRequest(request).pipe(
+      Effect.catchTags({
+        ServerAuthInvalidCredentialError: (error) => failEnvironmentAuthInvalid(error.reason),
+        ServerAuthInternalError: (error) => failEnvironmentInternal("internal_error", error),
+      }),
+    );
     if (!session.scopes.includes(scope)) {
       return yield* failEnvironmentScopeRequired(scope);
     }
@@ -155,6 +155,7 @@ export const otlpTracesProxyRouteLayer = HttpRouter.add(
   }).pipe(
     Effect.catchTags({
       EnvironmentAuthInvalidError: HttpServerRespondable.toResponse,
+      EnvironmentInternalError: HttpServerRespondable.toResponse,
       EnvironmentScopeRequiredError: HttpServerRespondable.toResponse,
     }),
   ),
@@ -216,6 +217,7 @@ export const attachmentsRouteLayer = HttpRouter.add(
   }).pipe(
     Effect.catchTags({
       EnvironmentAuthInvalidError: HttpServerRespondable.toResponse,
+      EnvironmentInternalError: HttpServerRespondable.toResponse,
       EnvironmentScopeRequiredError: HttpServerRespondable.toResponse,
     }),
   ),
@@ -262,6 +264,7 @@ export const projectFaviconRouteLayer = HttpRouter.add(
   }).pipe(
     Effect.catchTags({
       EnvironmentAuthInvalidError: HttpServerRespondable.toResponse,
+      EnvironmentInternalError: HttpServerRespondable.toResponse,
       EnvironmentScopeRequiredError: HttpServerRespondable.toResponse,
     }),
   ),

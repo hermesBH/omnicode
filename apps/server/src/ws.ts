@@ -101,7 +101,7 @@ import {
   SessionCredentialService,
   type SessionCredentialChange,
 } from "./auth/Services/SessionCredentialService.ts";
-import { failEnvironmentAuthInvalid } from "./auth/http.ts";
+import { failEnvironmentAuthInvalid, failEnvironmentInternal } from "./auth/http.ts";
 const isOrchestrationDispatchCommandError = Schema.is(OrchestrationDispatchCommandError);
 const isWorkspacePathOutsideRootError = Schema.is(WorkspacePathOutsideRootError);
 
@@ -1427,13 +1427,12 @@ export const websocketRpcRouteLayer = Layer.unwrap(
         const request = yield* HttpServerRequest.HttpServerRequest;
         const serverAuth = yield* ServerAuth;
         const sessions = yield* SessionCredentialService;
-        const session = yield* serverAuth
-          .authenticateWebSocketUpgrade(request)
-          .pipe(
-            Effect.catchTag("ServerAuthInvalidCredentialError", (error) =>
-              failEnvironmentAuthInvalid(error.reason),
-            ),
-          );
+        const session = yield* serverAuth.authenticateWebSocketUpgrade(request).pipe(
+          Effect.catchTags({
+            ServerAuthInvalidCredentialError: (error) => failEnvironmentAuthInvalid(error.reason),
+            ServerAuthInternalError: (error) => failEnvironmentInternal("internal_error", error),
+          }),
+        );
         const rpcWebSocketHttpEffect = yield* RpcServer.toHttpEffectWebsocket(WsRpcGroup, {
           disableTracing: true,
         }).pipe(
@@ -1470,7 +1469,12 @@ export const websocketRpcRouteLayer = Layer.unwrap(
           () => rpcWebSocketHttpEffect,
           () => sessions.markDisconnected(session.sessionId),
         );
-      }).pipe(Effect.catchTag("EnvironmentAuthInvalidError", HttpServerRespondable.toResponse)),
+      }).pipe(
+        Effect.catchTags({
+          EnvironmentAuthInvalidError: HttpServerRespondable.toResponse,
+          EnvironmentInternalError: HttpServerRespondable.toResponse,
+        }),
+      ),
     ),
   ),
 );

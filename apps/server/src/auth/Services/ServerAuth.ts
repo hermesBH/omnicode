@@ -55,7 +55,7 @@ export interface ServerAuthShape {
   readonly getDescriptor: () => Effect.Effect<ServerAuthDescriptor>;
   readonly getSessionState: (
     request: HttpServerRequest.HttpServerRequest,
-  ) => Effect.Effect<AuthSessionState, never>;
+  ) => Effect.Effect<AuthSessionState, ServerAuthInternalError>;
   readonly createBrowserSession: (
     credential: string,
     requestMetadata: AuthClientMetadata,
@@ -98,10 +98,16 @@ export interface ServerAuthShape {
   ) => Effect.Effect<number, ServerAuthInternalError>;
   readonly authenticateHttpRequest: (
     request: HttpServerRequest.HttpServerRequest,
-  ) => Effect.Effect<AuthenticatedSession, ServerAuthInvalidCredentialError>;
+  ) => Effect.Effect<
+    AuthenticatedSession,
+    ServerAuthInvalidCredentialError | ServerAuthInternalError
+  >;
   readonly authenticateWebSocketUpgrade: (
     request: HttpServerRequest.HttpServerRequest,
-  ) => Effect.Effect<AuthenticatedSession, ServerAuthInvalidCredentialError>;
+  ) => Effect.Effect<
+    AuthenticatedSession,
+    ServerAuthInvalidCredentialError | ServerAuthInternalError
+  >;
   readonly issueWebSocketTicket: (
     session: Pick<AuthenticatedSession, "sessionId">,
   ) => Effect.Effect<AuthWebSocketTicketResult, ServerAuthInternalError>;

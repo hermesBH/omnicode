@@ -7,10 +7,15 @@ import * as TestClock from "effect/testing/TestClock";
 
 import type { ServerConfigShape } from "../../config.ts";
 import { ServerConfig } from "../../config.ts";
+import { PersistenceSqlError } from "../../persistence/Errors.ts";
 import { SqlitePersistenceMemory } from "../../persistence/Layers/Sqlite.ts";
+import { AuthSessionRepository } from "../../persistence/Services/AuthSessions.ts";
 import { SessionCredentialService } from "../Services/SessionCredentialService.ts";
 import { ServerSecretStoreLive } from "./ServerSecretStore.ts";
-import { SessionCredentialServiceLive } from "./SessionCredentialService.ts";
+import {
+  makeSessionCredentialService,
+  SessionCredentialServiceLive,
+} from "./SessionCredentialService.ts";
 
 const makeServerConfigLayer = (
   overrides?: Partial<Pick<ServerConfigShape, "desktopBootstrapToken">>,
@@ -34,6 +39,30 @@ const makeSessionCredentialLayer = (
     Layer.provide(ServerSecretStoreLive),
     Layer.provide(makeServerConfigLayer(overrides)),
   );
+
+const repositoryFailure = new PersistenceSqlError({
+  operation: "AuthSessionRepository.getById:query",
+  detail: "sqlite is unavailable",
+});
+
+const failingSessionLookupRepositoryLayer = Layer.succeed(AuthSessionRepository, {
+  create: () => Effect.void,
+  getById: () => Effect.fail(repositoryFailure),
+  listActive: () => Effect.succeed([]),
+  revoke: () => Effect.succeed(false),
+  revokeAllExcept: () => Effect.succeed([]),
+  setLastConnectedAt: () => Effect.void,
+});
+
+const failingSessionLookupCredentialLayer = Layer.effect(
+  SessionCredentialService,
+  makeSessionCredentialService,
+).pipe(
+  Layer.provide(failingSessionLookupRepositoryLayer),
+  Layer.provide(ServerSecretStoreLive),
+  Layer.provide(SqlitePersistenceMemory),
+  Layer.provide(makeServerConfigLayer()),
+);
 
 it.layer(NodeServices.layer)("SessionCredentialServiceLive", (it) => {
   it.effect("issues and verifies signed browser session tokens", () =>
@@ -65,9 +94,27 @@ it.layer(NodeServices.layer)("SessionCredentialServiceLive", (it) => {
       const sessions = yield* SessionCredentialService;
       const error = yield* Effect.flip(sessions.verify("not-a-session-token"));
 
-      expect(error._tag).toBe("SessionCredentialError");
+      expect(error._tag).toBe("SessionCredentialInvalidError");
       expect(error.message).toContain("Malformed session token");
     }).pipe(Effect.provide(makeSessionCredentialLayer())),
+  );
+  it.effect("preserves repository failures while verifying session and websocket credentials", () =>
+    Effect.gen(function* () {
+      const sessions = yield* SessionCredentialService;
+      const issued = yield* sessions.issue({
+        method: "bearer-access-token",
+        subject: "repository-failure",
+      });
+      const websocket = yield* sessions.issueWebSocketToken(issued.sessionId);
+
+      const sessionError = yield* Effect.flip(sessions.verify(issued.token));
+      const websocketError = yield* Effect.flip(sessions.verifyWebSocketToken(websocket.token));
+
+      expect(sessionError._tag).toBe("SessionCredentialInternalError");
+      expect(websocketError._tag).toBe("SessionCredentialInternalError");
+      expect(sessionError.cause).toBe(repositoryFailure);
+      expect(websocketError.cause).toBe(repositoryFailure);
+    }).pipe(Effect.provide(failingSessionLookupCredentialLayer)),
   );
   it.effect("verifies session tokens against the Effect clock", () =>
     Effect.gen(function* () {
