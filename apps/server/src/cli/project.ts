@@ -24,9 +24,8 @@ import { Argument, Command, Flag, GlobalFlag } from "effect/unstable/cli";
 import { FetchHttpClient, HttpClient, HttpClientError } from "effect/unstable/http";
 import * as HttpApiClient from "effect/unstable/httpapi/HttpApiClient";
 
-import { AuthControlPlaneRuntimeLive } from "../auth/Layers/AuthControlPlane.ts";
-import { AuthControlPlane } from "../auth/Services/AuthControlPlane.ts";
-import type { AuthControlPlaneShape } from "../auth/Services/AuthControlPlane.ts";
+import * as EnvironmentAuth from "../auth/EnvironmentAuth.ts";
+
 import { ServerConfig, type ServerConfigShape } from "../config.ts";
 import { OrchestrationEngineService } from "../orchestration/Services/OrchestrationEngine.ts";
 import { ProjectionSnapshotQuery } from "../orchestration/Services/ProjectionSnapshotQuery.ts";
@@ -79,16 +78,16 @@ const ProjectCliRuntimeLive = Layer.mergeAll(
 const PROJECT_CLI_LIVE_SERVER_TIMEOUT = Duration.seconds(1);
 const isEnvironmentHttpCommonError = Schema.is(EnvironmentHttpCommonError);
 const withProjectCliSessionToken = <A, E, R>(
-  authControlPlane: AuthControlPlaneShape,
+  environmentAuth: EnvironmentAuth.EnvironmentAuthShape,
   run: (token: string) => Effect.Effect<A, E, R>,
 ) =>
   Effect.acquireUseRelease(
-    authControlPlane.issueSession({
+    environmentAuth.issueSession({
       scopes: AuthAdministrativeScopes,
       label: "t3 project cli",
     }),
     (issued) => run(issued.token),
-    (issued) => authControlPlane.revokeSession(issued.sessionId).pipe(Effect.ignore({ log: true })),
+    (issued) => environmentAuth.revokeSession(issued.sessionId).pipe(Effect.ignore({ log: true })),
   );
 
 const withProjectCliLiveServerTimeout = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
@@ -221,13 +220,13 @@ const getOfflineSnapshot = Effect.fn("getOfflineSnapshot")(function* () {
 });
 
 const tryResolveLiveProjectExecutionMode = Effect.fn("tryResolveLiveProjectExecutionMode")(
-  function* (authControlPlane: AuthControlPlaneShape, config: ServerConfigShape) {
+  function* (environmentAuth: EnvironmentAuth.EnvironmentAuthShape, config: ServerConfigShape) {
     const runtimeState = yield* readPersistedServerRuntimeState(config.serverRuntimeStatePath);
     if (Option.isNone(runtimeState)) {
       return Option.none<{ readonly origin: string }>();
     }
 
-    const attempt = withProjectCliSessionToken(authControlPlane, (token) =>
+    const attempt = withProjectCliSessionToken(environmentAuth, (token) =>
       fetchLiveOrchestrationSnapshot(runtimeState.value.origin, token).pipe(
         Effect.as({
           origin: runtimeState.value.origin,
@@ -264,11 +263,11 @@ const runProjectMutation = Effect.fn("runProjectMutation")(function* (
   const minimumLogLevel = config.logLevel;
 
   return yield* Effect.gen(function* () {
-    const authControlPlane = yield* AuthControlPlane;
-    const liveMode = yield* tryResolveLiveProjectExecutionMode(authControlPlane, config);
+    const environmentAuth = yield* EnvironmentAuth.EnvironmentAuth;
+    const liveMode = yield* tryResolveLiveProjectExecutionMode(environmentAuth, config);
 
     if (Option.isSome(liveMode)) {
-      return yield* withProjectCliSessionToken(authControlPlane, (token) =>
+      return yield* withProjectCliSessionToken(environmentAuth, (token) =>
         Effect.gen(function* () {
           const snapshot = yield* fetchLiveOrchestrationSnapshot(liveMode.value.origin, token);
           const output = yield* run({
@@ -299,7 +298,7 @@ const runProjectMutation = Effect.fn("runProjectMutation")(function* (
     }).pipe(Effect.provide(offlineRuntimeLayer));
   }).pipe(
     Effect.provide(
-      Layer.mergeAll(AuthControlPlaneRuntimeLive, WorkspacePathsLive).pipe(
+      Layer.mergeAll(EnvironmentAuth.runtimeLayer, WorkspacePathsLive).pipe(
         Layer.provideMerge(FetchHttpClient.layer),
         Layer.provide(Layer.succeed(ServerConfig, config)),
         Layer.provide(Layer.succeed(References.MinimumLogLevel, minimumLogLevel)),

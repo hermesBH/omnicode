@@ -31,8 +31,8 @@ import {
   persistServerRuntimeState,
 } from "./serverRuntimeState.ts";
 import { WorkspacePathsLive } from "./workspace/Layers/WorkspacePaths.ts";
-import { ServerSecretStoreLive } from "./auth/Layers/ServerSecretStore.ts";
-import { ServerAuthLive } from "./auth/Layers/ServerAuth.ts";
+import * as ServerSecretStore from "./auth/ServerSecretStore.ts";
+import * as EnvironmentAuth from "./auth/EnvironmentAuth.ts";
 import { environmentAuthenticatedAuthLayer } from "./auth/http.ts";
 
 const CliRuntimeLayer = Layer.mergeAll(NodeServices.layer, NetService.layer);
@@ -116,9 +116,9 @@ const withLiveProjectCliServer = <A, E, R>(baseDir: string, run: () => Effect.Ef
       disableLogger: true,
     }).pipe(
       Layer.provideMerge(
-        ServerAuthLive.pipe(
+        EnvironmentAuth.layer.pipe(
           Layer.provideMerge(SqlitePersistenceLayerLive),
-          Layer.provide(ServerSecretStoreLive),
+          Layer.provide(ServerSecretStore.layer),
         ),
       ),
       Layer.provideMerge(makeProjectPersistenceLayer(config)),

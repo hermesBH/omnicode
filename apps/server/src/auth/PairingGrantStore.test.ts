@@ -5,11 +5,10 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as TestClock from "effect/testing/TestClock";
 
-import type { ServerConfigShape } from "../../config.ts";
-import { ServerConfig } from "../../config.ts";
-import { SqlitePersistenceMemory } from "../../persistence/Layers/Sqlite.ts";
-import { BootstrapCredentialService } from "../Services/BootstrapCredentialService.ts";
-import { BootstrapCredentialServiceLive } from "./BootstrapCredentialService.ts";
+import type { ServerConfigShape } from "../config.ts";
+import { ServerConfig } from "../config.ts";
+import { SqlitePersistenceMemory } from "../persistence/Layers/Sqlite.ts";
+import * as PairingGrantStore from "./PairingGrantStore.ts";
 
 const makeServerConfigLayer = (
   overrides?: Partial<Pick<ServerConfigShape, "desktopBootstrapToken">>,
@@ -27,27 +26,27 @@ const makeServerConfigLayer = (
     Layer.provide(ServerConfig.layerTest(process.cwd(), { prefix: "t3-auth-bootstrap-test-" })),
   );
 
-const makeBootstrapCredentialLayer = (
+const makePairingGrantStoreLayer = (
   overrides?: Partial<Pick<ServerConfigShape, "desktopBootstrapToken">>,
 ) =>
-  BootstrapCredentialServiceLive.pipe(
+  PairingGrantStore.layer.pipe(
     Layer.provide(SqlitePersistenceMemory),
     Layer.provide(makeServerConfigLayer(overrides)),
   );
 
-it.layer(NodeServices.layer)("BootstrapCredentialServiceLive", (it) => {
+it.layer(NodeServices.layer)("PairingGrantStore.layer", (it) => {
   it.effect("issues pairing tokens in a short manual-entry format", () =>
     Effect.gen(function* () {
-      const bootstrapCredentials = yield* BootstrapCredentialService;
+      const bootstrapCredentials = yield* PairingGrantStore.PairingGrantStore;
       const issued = yield* bootstrapCredentials.issueOneTimeToken();
 
       expect(issued.credential).toMatch(/^[23456789ABCDEFGHJKLMNPQRSTUVWXYZ]{12}$/);
-    }).pipe(Effect.provide(makeBootstrapCredentialLayer())),
+    }).pipe(Effect.provide(makePairingGrantStoreLayer())),
   );
 
   it.effect("issues one-time bootstrap tokens that can only be consumed once", () =>
     Effect.gen(function* () {
-      const bootstrapCredentials = yield* BootstrapCredentialService;
+      const bootstrapCredentials = yield* PairingGrantStore.PairingGrantStore;
       const issued = yield* bootstrapCredentials.issueOneTimeToken({ label: "Julius iPhone" });
       const first = yield* bootstrapCredentials.consume(issued.credential);
       const second = yield* Effect.flip(bootstrapCredentials.consume(issued.credential));
@@ -64,12 +63,12 @@ it.layer(NodeServices.layer)("BootstrapCredentialServiceLive", (it) => {
       expect(issued.label).toBe("Julius iPhone");
       expect(second._tag).toBe("BootstrapCredentialInvalidError");
       expect(second.message).toContain("Unknown bootstrap credential");
-    }).pipe(Effect.provide(makeBootstrapCredentialLayer())),
+    }).pipe(Effect.provide(makePairingGrantStoreLayer())),
   );
 
   it.effect("atomically consumes a one-time token when multiple requests race", () =>
     Effect.gen(function* () {
-      const bootstrapCredentials = yield* BootstrapCredentialService;
+      const bootstrapCredentials = yield* PairingGrantStore.PairingGrantStore;
       const token = yield* bootstrapCredentials.issueOneTimeToken();
       const results = yield* Effect.all(
         Array.from({ length: 8 }, () =>
@@ -89,12 +88,12 @@ it.layer(NodeServices.layer)("BootstrapCredentialServiceLive", (it) => {
         expect(failure.failure._tag).toBe("BootstrapCredentialInvalidError");
         expect(failure.failure.message).toContain("Unknown bootstrap credential");
       }
-    }).pipe(Effect.provide(makeBootstrapCredentialLayer())),
+    }).pipe(Effect.provide(makePairingGrantStoreLayer())),
   );
 
   it.effect("seeds the desktop bootstrap credential as a one-time grant", () =>
     Effect.gen(function* () {
-      const bootstrapCredentials = yield* BootstrapCredentialService;
+      const bootstrapCredentials = yield* PairingGrantStore.PairingGrantStore;
       const first = yield* bootstrapCredentials.consume("desktop-bootstrap-token");
       const second = yield* Effect.flip(bootstrapCredentials.consume("desktop-bootstrap-token"));
 
@@ -111,7 +110,7 @@ it.layer(NodeServices.layer)("BootstrapCredentialServiceLive", (it) => {
       expect(second._tag).toBe("BootstrapCredentialInvalidError");
     }).pipe(
       Effect.provide(
-        makeBootstrapCredentialLayer({
+        makePairingGrantStoreLayer({
           desktopBootstrapToken: "desktop-bootstrap-token",
         }),
       ),
@@ -120,7 +119,7 @@ it.layer(NodeServices.layer)("BootstrapCredentialServiceLive", (it) => {
 
   it.effect("reports seeded desktop bootstrap credentials as expired after their ttl", () =>
     Effect.gen(function* () {
-      const bootstrapCredentials = yield* BootstrapCredentialService;
+      const bootstrapCredentials = yield* PairingGrantStore.PairingGrantStore;
 
       yield* TestClock.adjust(Duration.minutes(6));
       const expired = yield* Effect.flip(bootstrapCredentials.consume("desktop-bootstrap-token"));
@@ -130,7 +129,7 @@ it.layer(NodeServices.layer)("BootstrapCredentialServiceLive", (it) => {
     }).pipe(
       Effect.provide(
         Layer.merge(
-          makeBootstrapCredentialLayer({
+          makePairingGrantStoreLayer({
             desktopBootstrapToken: "desktop-bootstrap-token",
           }),
           TestClock.layer(),
@@ -141,7 +140,7 @@ it.layer(NodeServices.layer)("BootstrapCredentialServiceLive", (it) => {
 
   it.effect("lists and revokes active pairing links", () =>
     Effect.gen(function* () {
-      const bootstrapCredentials = yield* BootstrapCredentialService;
+      const bootstrapCredentials = yield* PairingGrantStore.PairingGrantStore;
       const first = yield* bootstrapCredentials.issueOneTimeToken();
       const second = yield* bootstrapCredentials.issueOneTimeToken({
         scopes: ["orchestration:read", "access:manage"],
@@ -160,6 +159,6 @@ it.layer(NodeServices.layer)("BootstrapCredentialServiceLive", (it) => {
       expect(activeAfterRevoke.map((entry) => entry.id)).toContain(second.id);
       expect(revokedConsume.message).toContain("no longer available");
       expect(revokedConsume._tag).toBe("BootstrapCredentialInvalidError");
-    }).pipe(Effect.provide(makeBootstrapCredentialLayer())),
+    }).pipe(Effect.provide(makePairingGrantStoreLayer())),
   );
 });

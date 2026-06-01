@@ -29,8 +29,8 @@ import * as HttpEffect from "effect/unstable/http/HttpEffect";
 import { HttpServerRequest, HttpServerResponse } from "effect/unstable/http";
 import * as HttpApiBuilder from "effect/unstable/httpapi/HttpApiBuilder";
 
-import { ServerAuth } from "./Services/ServerAuth.ts";
-import { SessionCredentialService } from "./Services/SessionCredentialService.ts";
+import * as EnvironmentAuth from "./EnvironmentAuth.ts";
+import * as SessionStore from "./SessionStore.ts";
 import { deriveAuthClientMetadata } from "./utils.ts";
 
 export const currentEnvironmentTraceId = Effect.currentParentSpan.pipe(
@@ -134,7 +134,7 @@ export const requireEnvironmentScope = Effect.fn("environment.auth.requireScope"
 export const environmentAuthenticatedAuthLayer = Layer.effect(
   EnvironmentAuthenticatedAuth,
   Effect.gen(function* () {
-    const serverAuth = yield* ServerAuth;
+    const serverAuth = yield* EnvironmentAuth.EnvironmentAuth;
     return (httpEffect) =>
       Effect.gen(function* () {
         const request = yield* HttpServerRequest.HttpServerRequest;
@@ -158,8 +158,8 @@ export const authHttpApiLayer = HttpApiBuilder.group(
   EnvironmentHttpApi,
   "auth",
   Effect.fnUntraced(function* (handlers) {
-    const serverAuth = yield* ServerAuth;
-    const sessions = yield* SessionCredentialService;
+    const serverAuth = yield* EnvironmentAuth.EnvironmentAuth;
+    const sessions = yield* SessionStore.SessionStore;
 
     return handlers
       .handle(

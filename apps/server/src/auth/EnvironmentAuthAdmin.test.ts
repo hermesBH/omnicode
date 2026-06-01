@@ -3,15 +3,12 @@ import { expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 
-import type { ServerConfigShape } from "../../config.ts";
-import { ServerConfig } from "../../config.ts";
-import { BootstrapCredentialServiceLive } from "./BootstrapCredentialService.ts";
-import { ServerSecretStoreLive } from "./ServerSecretStore.ts";
-import { SessionCredentialServiceLive } from "./SessionCredentialService.ts";
-import { SqlitePersistenceMemory } from "../../persistence/Layers/Sqlite.ts";
-import { AuthControlPlane } from "../Services/AuthControlPlane.ts";
-import { makeAuthControlPlane } from "./AuthControlPlane.ts";
-import { SessionCredentialService } from "../Services/SessionCredentialService.ts";
+import type { ServerConfigShape } from "../config.ts";
+import { ServerConfig } from "../config.ts";
+import { SqlitePersistenceMemory } from "../persistence/Layers/Sqlite.ts";
+import * as EnvironmentAuth from "./EnvironmentAuth.ts";
+import * as ServerSecretStore from "./ServerSecretStore.ts";
+import * as SessionStore from "./SessionStore.ts";
 
 const makeServerConfigLayer = (
   overrides?: Partial<Pick<ServerConfigShape, "desktopBootstrapToken">>,
@@ -29,30 +26,28 @@ const makeServerConfigLayer = (
     Layer.provide(ServerConfig.layerTest(process.cwd(), { prefix: "t3-auth-control-plane-test-" })),
   );
 
-const makeAuthControlPlaneLayer = (
+const makeEnvironmentAuthLayer = (
   overrides?: Partial<Pick<ServerConfigShape, "desktopBootstrapToken">>,
 ) =>
-  Layer.effect(AuthControlPlane, makeAuthControlPlane).pipe(
-    Layer.provideMerge(BootstrapCredentialServiceLive),
-    Layer.provideMerge(SessionCredentialServiceLive),
-    Layer.provideMerge(ServerSecretStoreLive),
+  EnvironmentAuth.layer.pipe(
+    Layer.provideMerge(ServerSecretStore.layer),
     Layer.provideMerge(SqlitePersistenceMemory),
     Layer.provide(makeServerConfigLayer(overrides)),
   );
 
-it.layer(NodeServices.layer)("AuthControlPlane", (it) => {
+it.layer(NodeServices.layer)("EnvironmentAuth administrative operations", (it) => {
   it.effect("creates, lists, and revokes client pairing links", () =>
     Effect.gen(function* () {
-      const authControlPlane = yield* AuthControlPlane;
+      const environmentAuth = yield* EnvironmentAuth.EnvironmentAuth;
 
-      const created = yield* authControlPlane.createPairingLink({
+      const created = yield* environmentAuth.createPairingLink({
         scopes: ["orchestration:read"],
         subject: "one-time-token",
         label: "CI phone",
       });
-      const listedBeforeRevoke = yield* authControlPlane.listPairingLinks();
-      const revoked = yield* authControlPlane.revokePairingLink(created.id);
-      const listedAfterRevoke = yield* authControlPlane.listPairingLinks();
+      const listedBeforeRevoke = yield* environmentAuth.listPairingLinks();
+      const revoked = yield* environmentAuth.revokePairingLink(created.id);
+      const listedAfterRevoke = yield* environmentAuth.listPairingLinks();
 
       expect(created.scopes).toEqual(["orchestration:read"]);
       expect(created.credential.length).toBeGreaterThan(0);
@@ -62,21 +57,21 @@ it.layer(NodeServices.layer)("AuthControlPlane", (it) => {
       expect(listedBeforeRevoke[0]?.credential).toBe(created.credential);
       expect(revoked).toBe(true);
       expect(listedAfterRevoke).toHaveLength(0);
-    }).pipe(Effect.provide(makeAuthControlPlaneLayer())),
+    }).pipe(Effect.provide(makeEnvironmentAuthLayer())),
   );
 
   it.effect("issues bearer access token sessions without exposing raw tokens", () =>
     Effect.gen(function* () {
-      const authControlPlane = yield* AuthControlPlane;
-      const sessionCredentials = yield* SessionCredentialService;
+      const environmentAuth = yield* EnvironmentAuth.EnvironmentAuth;
+      const sessionCredentials = yield* SessionStore.SessionStore;
 
-      const issued = yield* authControlPlane.issueSession({
+      const issued = yield* environmentAuth.issueSession({
         label: "deploy-bot",
       });
       const verified = yield* sessionCredentials.verify(issued.token);
-      const listedBeforeRevoke = yield* authControlPlane.listSessions();
-      const revoked = yield* authControlPlane.revokeSession(issued.sessionId);
-      const listedAfterRevoke = yield* authControlPlane.listSessions();
+      const listedBeforeRevoke = yield* environmentAuth.listSessions();
+      const revoked = yield* environmentAuth.revokeSession(issued.sessionId);
+      const listedAfterRevoke = yield* environmentAuth.listSessions();
 
       expect(issued.method).toBe("bearer-access-token");
       expect(issued.scopes).toEqual([
@@ -104,23 +99,23 @@ it.layer(NodeServices.layer)("AuthControlPlane", (it) => {
       expect("token" in (listedBeforeRevoke[0] ?? {})).toBe(false);
       expect(revoked).toBe(true);
       expect(listedAfterRevoke).toHaveLength(0);
-    }).pipe(Effect.provide(makeAuthControlPlaneLayer())),
+    }).pipe(Effect.provide(makeEnvironmentAuthLayer())),
   );
 
   it.effect("surfaces lastConnectedAt through the listed session view", () =>
     Effect.gen(function* () {
-      const authControlPlane = yield* AuthControlPlane;
-      const sessionCredentials = yield* SessionCredentialService;
+      const environmentAuth = yield* EnvironmentAuth.EnvironmentAuth;
+      const sessionCredentials = yield* SessionStore.SessionStore;
 
-      const issued = yield* authControlPlane.issueSession({
+      const issued = yield* environmentAuth.issueSession({
         label: "remote-ipad",
       });
-      const beforeConnect = yield* authControlPlane.listSessions();
+      const beforeConnect = yield* environmentAuth.listSessions();
       yield* sessionCredentials.markConnected(issued.sessionId);
-      const afterConnect = yield* authControlPlane.listSessions();
+      const afterConnect = yield* environmentAuth.listSessions();
 
       expect(beforeConnect[0]?.lastConnectedAt).toBeNull();
       expect(afterConnect[0]?.lastConnectedAt).not.toBeNull();
-    }).pipe(Effect.provide(makeAuthControlPlaneLayer())),
+    }).pipe(Effect.provide(makeEnvironmentAuthLayer())),
   );
 });

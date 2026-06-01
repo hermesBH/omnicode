@@ -4,16 +4,13 @@ import { expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 
-import type { ServerConfigShape } from "../../config.ts";
-import { ServerConfig } from "../../config.ts";
-import { SqlitePersistenceMemory } from "../../persistence/Layers/Sqlite.ts";
-import {
-  BootstrapCredentialInternalError,
-  BootstrapCredentialInvalidError,
-} from "../Services/BootstrapCredentialService.ts";
-import { ServerAuth, type ServerAuthShape } from "../Services/ServerAuth.ts";
-import { ServerAuthLive, toBootstrapExchangeError } from "./ServerAuth.ts";
-import { ServerSecretStoreLive } from "./ServerSecretStore.ts";
+import type { ServerConfigShape } from "../config.ts";
+import { ServerConfig } from "../config.ts";
+import { SqlitePersistenceMemory } from "../persistence/Layers/Sqlite.ts";
+import * as PairingGrantStore from "./PairingGrantStore.ts";
+import * as EnvironmentAuth from "./EnvironmentAuth.ts";
+
+import * as ServerSecretStore from "./ServerSecretStore.ts";
 
 const makeServerConfigLayer = (overrides?: Partial<ServerConfigShape>) =>
   Layer.effect(
@@ -27,22 +24,22 @@ const makeServerConfigLayer = (overrides?: Partial<ServerConfigShape>) =>
     }),
   ).pipe(Layer.provide(ServerConfig.layerTest(process.cwd(), { prefix: "t3-auth-server-test-" })));
 
-const makeServerAuthLayer = (overrides?: Partial<ServerConfigShape>) =>
-  ServerAuthLive.pipe(
+const makeEnvironmentAuthLayer = (overrides?: Partial<ServerConfigShape>) =>
+  EnvironmentAuth.layer.pipe(
     Layer.provide(SqlitePersistenceMemory),
-    Layer.provide(ServerSecretStoreLive),
+    Layer.provide(ServerSecretStore.layer),
     Layer.provide(makeServerConfigLayer(overrides)),
   );
 
 const makeCookieRequest = (
   sessionToken: string,
-): Parameters<ServerAuthShape["authenticateHttpRequest"]>[0] =>
+): Parameters<EnvironmentAuth.EnvironmentAuthShape["authenticateHttpRequest"]>[0] =>
   ({
     cookies: {
       t3_session: sessionToken,
     },
     headers: {},
-  }) as unknown as Parameters<ServerAuthShape["authenticateHttpRequest"]>[0];
+  }) as unknown as Parameters<EnvironmentAuth.EnvironmentAuthShape["authenticateHttpRequest"]>[0];
 
 const requestMetadata = {
   deviceType: "desktop" as const,
@@ -51,11 +48,11 @@ const requestMetadata = {
   ipAddress: "192.168.1.23",
 };
 
-it.layer(NodeServices.layer)("ServerAuthLive", (it) => {
+it.layer(NodeServices.layer)("EnvironmentAuth.layer", (it) => {
   it.effect("classifies invalid bootstrap credential failures for the HTTP boundary", () =>
     Effect.sync(() => {
-      const error = toBootstrapExchangeError(
-        new BootstrapCredentialInvalidError({
+      const error = EnvironmentAuth.toBootstrapExchangeError(
+        new PairingGrantStore.BootstrapCredentialInvalidError({
           message: "Unknown bootstrap credential.",
         }),
       );
@@ -69,8 +66,8 @@ it.layer(NodeServices.layer)("ServerAuthLive", (it) => {
 
   it.effect("maps unexpected bootstrap failures to 500", () =>
     Effect.sync(() => {
-      const error = toBootstrapExchangeError(
-        new BootstrapCredentialInternalError({
+      const error = EnvironmentAuth.toBootstrapExchangeError(
+        new PairingGrantStore.BootstrapCredentialInternalError({
           message: "Failed to consume bootstrap credential.",
           cause: new Error("sqlite is unavailable"),
         }),
@@ -83,7 +80,7 @@ it.layer(NodeServices.layer)("ServerAuthLive", (it) => {
 
   it.effect("issues standard pairing credentials by default", () =>
     Effect.gen(function* () {
-      const serverAuth = yield* ServerAuth;
+      const serverAuth = yield* EnvironmentAuth.EnvironmentAuth;
 
       const pairingCredential = yield* serverAuth.issuePairingCredential();
       const exchanged = yield* serverAuth.createBrowserSession(
@@ -102,12 +99,12 @@ it.layer(NodeServices.layer)("ServerAuthLive", (it) => {
         "review:write",
       ]);
       expect(verified.subject).toBe("one-time-token");
-    }).pipe(Effect.provide(makeServerAuthLayer())),
+    }).pipe(Effect.provide(makeEnvironmentAuthLayer())),
   );
 
   it.effect("does not exchange ordinary pairing grants for administrative access tokens", () =>
     Effect.gen(function* () {
-      const serverAuth = yield* ServerAuth;
+      const serverAuth = yield* EnvironmentAuth.EnvironmentAuth;
       const pairingCredential = yield* serverAuth.issuePairingCredential();
 
       const error = yield* serverAuth
@@ -122,12 +119,12 @@ it.layer(NodeServices.layer)("ServerAuthLive", (it) => {
       if (error._tag === "ServerAuthInvalidRequestError") {
         expect(error.reason).toBe("scope_not_granted");
       }
-    }).pipe(Effect.provide(makeServerAuthLayer())),
+    }).pipe(Effect.provide(makeEnvironmentAuthLayer())),
   );
 
   it.effect("inherits a constrained pairing grant when token exchange omits scope", () =>
     Effect.gen(function* () {
-      const serverAuth = yield* ServerAuth;
+      const serverAuth = yield* EnvironmentAuth.EnvironmentAuth;
       const pairingCredential = yield* serverAuth.issuePairingCredential({
         scopes: ["orchestration:read"],
       });
@@ -139,12 +136,12 @@ it.layer(NodeServices.layer)("ServerAuthLive", (it) => {
       );
 
       expect(token.scope).toBe("orchestration:read");
-    }).pipe(Effect.provide(makeServerAuthLayer())),
+    }).pipe(Effect.provide(makeEnvironmentAuthLayer())),
   );
 
   it.effect("keeps user-issued administrative pairing links manageable", () =>
     Effect.gen(function* () {
-      const serverAuth = yield* ServerAuth;
+      const serverAuth = yield* EnvironmentAuth.EnvironmentAuth;
       const pairingCredential = yield* serverAuth.issuePairingCredential({
         scopes: AuthAdministrativeScopes,
       });
@@ -153,12 +150,12 @@ it.layer(NodeServices.layer)("ServerAuthLive", (it) => {
       expect(
         listedPairingLinks.find((pairingLink) => pairingLink.id === pairingCredential.id)?.subject,
       ).toBe("one-time-token");
-    }).pipe(Effect.provide(makeServerAuthLayer())),
+    }).pipe(Effect.provide(makeEnvironmentAuthLayer())),
   );
 
   it.effect("issues startup pairing URLs that bootstrap administrative sessions", () =>
     Effect.gen(function* () {
-      const serverAuth = yield* ServerAuth;
+      const serverAuth = yield* EnvironmentAuth.EnvironmentAuth;
 
       const pairingUrl = yield* serverAuth.issueStartupPairingUrl("http://127.0.0.1:3773");
       const token = new URLSearchParams(new URL(pairingUrl).hash.slice(1)).get("token");
@@ -184,14 +181,14 @@ it.layer(NodeServices.layer)("ServerAuthLive", (it) => {
         "relay:manage",
       ]);
       expect(verified.subject).toBe("administrative-bootstrap");
-    }).pipe(Effect.provide(makeServerAuthLayer())),
+    }).pipe(Effect.provide(makeEnvironmentAuthLayer())),
   );
 
   it.effect(
     "lists pairing links and revokes other sessions while keeping the administrative session",
     () =>
       Effect.gen(function* () {
-        const serverAuth = yield* ServerAuth;
+        const serverAuth = yield* EnvironmentAuth.EnvironmentAuth;
 
         const administrativeExchange = yield* serverAuth.createBrowserSession(
           "desktop-bootstrap-token",
@@ -252,7 +249,7 @@ it.layer(NodeServices.layer)("ServerAuthLive", (it) => {
         expect(clientsAfterRevoke[0]?.sessionId).toBe(administrativeSession.sessionId);
       }).pipe(
         Effect.provide(
-          makeServerAuthLayer({
+          makeEnvironmentAuthLayer({
             desktopBootstrapToken: "desktop-bootstrap-token",
           }),
         ),
