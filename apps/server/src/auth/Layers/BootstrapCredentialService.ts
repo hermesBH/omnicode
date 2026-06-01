@@ -48,6 +48,17 @@ const PAIRING_TOKEN_LENGTH = 12;
 const PAIRING_TOKEN_REJECTION_LIMIT =
   Math.floor(256 / PAIRING_TOKEN_ALPHABET.length) * PAIRING_TOKEN_ALPHABET.length;
 
+const invalidBootstrapCredentialError = (message: string) =>
+  new BootstrapCredentialInvalidError({
+    message,
+  });
+
+const internalBootstrapCredentialError = (message: string, cause: unknown) =>
+  new BootstrapCredentialInternalError({
+    message,
+    cause,
+  });
+
 export const makeBootstrapCredentialService = Effect.gen(function* () {
   const crypto = yield* Crypto.Crypto;
   const config = yield* ServerConfig;
@@ -70,17 +81,6 @@ export const makeBootstrapCredentialService = Effect.gen(function* () {
     }
     return credential;
   });
-
-  const invalidBootstrapCredentialError = (message: string) =>
-    new BootstrapCredentialInvalidError({
-      message,
-    });
-
-  const internalBootstrapCredentialError = (message: string, cause: unknown) =>
-    new BootstrapCredentialInternalError({
-      message,
-      cause,
-    });
 
   const seedGrant = (credential: string, grant: StoredBootstrapGrant) =>
     Ref.update(seededGrantsRef, (current) => {
