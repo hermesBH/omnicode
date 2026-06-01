@@ -91,7 +91,7 @@ export interface EnvironmentAuthShape {
   readonly getDescriptor: () => Effect.Effect<ServerAuthDescriptor>;
   readonly getSessionState: (
     request: HttpServerRequest.HttpServerRequest,
-  ) => Effect.Effect<AuthSessionState, ServerAuthInternalError>;
+  ) => Effect.Effect<AuthSessionState>;
   readonly createBrowserSession: (
     credential: string,
     requestMetadata: AuthClientMetadata,
@@ -296,12 +296,18 @@ export const make = Effect.fn("makeEnvironmentAuth")(function* () {
             ...(session.expiresAt ? { expiresAt: DateTime.toUtc(session.expiresAt) } : {}),
           }) satisfies AuthSessionState,
       ),
-      Effect.catchTag("ServerAuthInvalidCredentialError", () =>
-        Effect.succeed({
-          authenticated: false,
-          auth: descriptor,
-        } satisfies AuthSessionState),
-      ),
+      Effect.catchTags({
+        ServerAuthInvalidCredentialError: () =>
+          Effect.succeed({
+            authenticated: false,
+            auth: descriptor,
+          } satisfies AuthSessionState),
+        ServerAuthInternalError: () =>
+          Effect.succeed({
+            authenticated: false,
+            auth: descriptor,
+          } satisfies AuthSessionState),
+      }),
     );
 
   const createBrowserSession: EnvironmentAuthShape["createBrowserSession"] = (

@@ -167,13 +167,7 @@ export const authHttpApiLayer = HttpApiBuilder.group(
         Effect.fn("environment.auth.session")(function* (args) {
           yield* annotateEnvironmentRequest(args.endpoint.name);
           const request = yield* HttpServerRequest.HttpServerRequest;
-          return yield* serverAuth
-            .getSessionState(request)
-            .pipe(
-              Effect.catchTag("ServerAuthInternalError", (error) =>
-                failEnvironmentInternal("internal_error", error),
-              ),
-            );
+          return yield* serverAuth.getSessionState(request);
         }),
       )
       .handle(
