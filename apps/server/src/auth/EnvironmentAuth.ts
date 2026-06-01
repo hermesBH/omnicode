@@ -302,6 +302,7 @@ export const make = Effect.fn("makeEnvironmentAuth")(function* () {
           auth: descriptor,
         } satisfies AuthSessionState),
       ),
+      Effect.withSpan("EnvironmentAuth.getSessionState"),
     );
 
   const createBrowserSession: EnvironmentAuthShape["createBrowserSession"] = (
@@ -343,6 +344,7 @@ export const make = Effect.fn("makeEnvironmentAuth")(function* () {
             sessionToken: session.token,
           }) satisfies BootstrapExchangeResult,
       ),
+      Effect.withSpan("EnvironmentAuth.createBrowserSession"),
     );
 
   const exchangeBootstrapCredentialForAccessToken: EnvironmentAuthShape["exchangeBootstrapCredentialForAccessToken"] =
@@ -397,6 +399,7 @@ export const make = Effect.fn("makeEnvironmentAuth")(function* () {
             ),
           ),
         ),
+        Effect.withSpan("EnvironmentAuth.exchangeBootstrapCredentialForAccessToken"),
       );
 
   const issuePairingCredentialForSubject = (input: {
@@ -420,8 +423,10 @@ export const make = Effect.fn("makeEnvironmentAuth")(function* () {
       ),
     );
 
-  const createPairingLink: EnvironmentAuthShape["createPairingLink"] = (input) =>
-    Effect.gen(function* () {
+  const createPairingLink: EnvironmentAuthShape["createPairingLink"] = Effect.fn(
+    "EnvironmentAuth.createPairingLink",
+  )(
+    function* (input) {
       const createdAt = yield* DateTime.now;
       const issued = yield* bootstrapCredentials.issueOneTimeToken({
         scopes: input?.scopes ?? AuthStandardClientScopes,
@@ -438,7 +443,9 @@ export const make = Effect.fn("makeEnvironmentAuth")(function* () {
         createdAt: DateTime.toUtc(createdAt),
         expiresAt: DateTime.toUtc(issued.expiresAt),
       } satisfies IssuedPairingLink;
-    }).pipe(Effect.mapError(toInternalError("Failed to create pairing link.")));
+    },
+    Effect.mapError(toInternalError("Failed to create pairing link.")),
+  );
 
   const listPairingLinks: EnvironmentAuthShape["listPairingLinks"] = (input) =>
     bootstrapCredentials.listActive().pipe(
@@ -453,12 +460,16 @@ export const make = Effect.fn("makeEnvironmentAuth")(function* () {
           );
       }),
       Effect.mapError(toInternalError("Failed to list pairing links.")),
+      Effect.withSpan("EnvironmentAuth.listPairingLinks"),
     );
 
   const revokePairingLink: EnvironmentAuthShape["revokePairingLink"] = (id) =>
     bootstrapCredentials
       .revoke(id)
-      .pipe(Effect.mapError(toInternalError("Failed to revoke pairing link.")));
+      .pipe(
+        Effect.mapError(toInternalError("Failed to revoke pairing link.")),
+        Effect.withSpan("EnvironmentAuth.revokePairingLink"),
+      );
 
   const issueSession: EnvironmentAuthShape["issueSession"] = (input) =>
     sessions
@@ -486,36 +497,46 @@ export const make = Effect.fn("makeEnvironmentAuth")(function* () {
             }) satisfies IssuedBearerSession,
         ),
         Effect.mapError(toInternalError("Failed to issue session token.")),
+        Effect.withSpan("EnvironmentAuth.issueSession"),
       );
 
   const listSessions: EnvironmentAuthShape["listSessions"] = () =>
     sessions.listActive().pipe(
       Effect.map((activeSessions) => activeSessions.toSorted(bySessionPriority)),
       Effect.mapError(toInternalError("Failed to list sessions.")),
+      Effect.withSpan("EnvironmentAuth.listSessions"),
     );
 
   const revokeSession: EnvironmentAuthShape["revokeSession"] = (sessionId) =>
-    sessions.revoke(sessionId).pipe(Effect.mapError(toInternalError("Failed to revoke session.")));
+    sessions
+      .revoke(sessionId)
+      .pipe(
+        Effect.mapError(toInternalError("Failed to revoke session.")),
+        Effect.withSpan("EnvironmentAuth.revokeSession"),
+      );
 
   const revokeOtherSessionsExcept: EnvironmentAuthShape["revokeOtherSessionsExcept"] = (
     sessionId,
   ) =>
     sessions
       .revokeAllExcept(sessionId)
-      .pipe(Effect.mapError(toInternalError("Failed to revoke other sessions.")));
+      .pipe(
+        Effect.mapError(toInternalError("Failed to revoke other sessions.")),
+        Effect.withSpan("EnvironmentAuth.revokeOtherSessionsExcept"),
+      );
 
   const issuePairingCredential: EnvironmentAuthShape["issuePairingCredential"] = (input) =>
     issuePairingCredentialForSubject({
       scopes: input?.scopes ?? AuthStandardClientScopes,
       subject: "one-time-token",
       ...(input?.label ? { label: input.label } : {}),
-    });
+    }).pipe(Effect.withSpan("EnvironmentAuth.issuePairingCredential"));
 
   const issueStartupPairingCredential: EnvironmentAuthShape["issueStartupPairingCredential"] = () =>
     issuePairingCredentialForSubject({
       scopes: AuthAdministrativeScopes,
       subject: INTERNAL_ADMINISTRATIVE_BOOTSTRAP_SUBJECT,
-    });
+    }).pipe(Effect.withSpan("EnvironmentAuth.issueStartupPairingCredential"));
 
   const listClientSessions: EnvironmentAuthShape["listClientSessions"] = (currentSessionId) =>
     listSessions().pipe(
@@ -527,24 +548,26 @@ export const make = Effect.fn("makeEnvironmentAuth")(function* () {
           }),
         ),
       ),
+      Effect.withSpan("EnvironmentAuth.listClientSessions"),
     );
 
-  const revokeClientSession: EnvironmentAuthShape["revokeClientSession"] = (
-    currentSessionId,
-    targetSessionId,
-  ) =>
-    Effect.gen(function* () {
-      if (currentSessionId === targetSessionId) {
-        return yield* new ServerAuthForbiddenOperationError({
-          reason: "current_session_revoke_not_allowed",
-        });
-      }
-      return yield* revokeSession(targetSessionId);
-    });
+  const revokeClientSession: EnvironmentAuthShape["revokeClientSession"] = Effect.fn(
+    "EnvironmentAuth.revokeClientSession",
+  )(function* (currentSessionId, targetSessionId) {
+    if (currentSessionId === targetSessionId) {
+      return yield* new ServerAuthForbiddenOperationError({
+        reason: "current_session_revoke_not_allowed",
+      });
+    }
+    return yield* revokeSession(targetSessionId);
+  });
 
   const revokeOtherClientSessions: EnvironmentAuthShape["revokeOtherClientSessions"] = (
     currentSessionId,
-  ) => revokeOtherSessionsExcept(currentSessionId);
+  ) =>
+    revokeOtherSessionsExcept(currentSessionId).pipe(
+      Effect.withSpan("EnvironmentAuth.revokeOtherClientSessions"),
+    );
 
   const issueStartupPairingUrl: EnvironmentAuthShape["issueStartupPairingUrl"] = (baseUrl) =>
     issueStartupPairingCredential().pipe(
@@ -555,6 +578,7 @@ export const make = Effect.fn("makeEnvironmentAuth")(function* () {
         url.hash = new URLSearchParams([["token", issued.credential]]).toString();
         return url.toString();
       }),
+      Effect.withSpan("EnvironmentAuth.issueStartupPairingUrl"),
     );
 
   const issueWebSocketTicket: EnvironmentAuthShape["issueWebSocketTicket"] = (session) =>
@@ -573,12 +597,14 @@ export const make = Effect.fn("makeEnvironmentAuth")(function* () {
             expiresAt: DateTime.toUtc(issued.expiresAt),
           }) satisfies AuthWebSocketTicketResult,
       ),
+      Effect.withSpan("EnvironmentAuth.issueWebSocketTicket"),
     );
 
-  const authenticateWebSocketUpgrade: EnvironmentAuthShape["authenticateWebSocketUpgrade"] = (
-    request,
-  ) =>
-    Effect.gen(function* () {
+  const authenticateHttpRequest: EnvironmentAuthShape["authenticateHttpRequest"] = (request) =>
+    authenticateRequest(request).pipe(Effect.withSpan("EnvironmentAuth.authenticateHttpRequest"));
+
+  const authenticateWebSocketUpgrade: EnvironmentAuthShape["authenticateWebSocketUpgrade"] =
+    Effect.fn("EnvironmentAuth.authenticateWebSocketUpgrade")(function* (request) {
       const requestUrl = HttpServerRequest.toURL(request);
       if (Option.isSome(requestUrl)) {
         const websocketTicket = requestUrl.value.searchParams.get(WEBSOCKET_TICKET_QUERY_PARAM);
@@ -600,7 +626,8 @@ export const make = Effect.fn("makeEnvironmentAuth")(function* () {
     });
 
   return {
-    getDescriptor: () => Effect.succeed(descriptor),
+    getDescriptor: () =>
+      Effect.succeed(descriptor).pipe(Effect.withSpan("EnvironmentAuth.getDescriptor")),
     getSessionState,
     createBrowserSession,
     exchangeBootstrapCredentialForAccessToken,
@@ -616,7 +643,7 @@ export const make = Effect.fn("makeEnvironmentAuth")(function* () {
     listClientSessions,
     revokeClientSession,
     revokeOtherClientSessions,
-    authenticateHttpRequest: authenticateRequest,
+    authenticateHttpRequest,
     authenticateWebSocketUpgrade,
     issueWebSocketTicket,
     issueStartupPairingUrl,

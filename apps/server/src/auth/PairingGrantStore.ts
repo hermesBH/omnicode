@@ -173,8 +173,10 @@ export const make = Effect.fn("makePairingGrantStore")(function* () {
   const toBootstrapCredentialError = (message: string) => (cause: unknown) =>
     internalBootstrapCredentialError(message, cause);
 
-  const listActive: PairingGrantStoreShape["listActive"] = () =>
-    Effect.gen(function* () {
+  const listActive: PairingGrantStoreShape["listActive"] = Effect.fn(
+    "PairingGrantStore.listActive",
+  )(
+    function* () {
       const now = yield* DateTime.now;
       const rows = yield* pairingLinks.listActive({ now });
 
@@ -198,10 +200,12 @@ export const make = Effect.fn("makePairingGrantStore")(function* () {
               expiresAt: row.expiresAt,
             } satisfies AuthPairingLink),
       );
-    }).pipe(Effect.mapError(toBootstrapCredentialError("Failed to load active pairing links.")));
+    },
+    Effect.mapError(toBootstrapCredentialError("Failed to load active pairing links.")),
+  );
 
-  const revoke: PairingGrantStoreShape["revoke"] = (id) =>
-    Effect.gen(function* () {
+  const revoke: PairingGrantStoreShape["revoke"] = Effect.fn("PairingGrantStore.revoke")(
+    function* (id) {
       const revokedAt = yield* DateTime.now;
       const revoked = yield* pairingLinks.revoke({
         id,
@@ -211,10 +215,14 @@ export const make = Effect.fn("makePairingGrantStore")(function* () {
         yield* emitRemoved(id);
       }
       return revoked;
-    }).pipe(Effect.mapError(toBootstrapCredentialError("Failed to revoke pairing link.")));
+    },
+    Effect.mapError(toBootstrapCredentialError("Failed to revoke pairing link.")),
+  );
 
-  const issueOneTimeToken: PairingGrantStoreShape["issueOneTimeToken"] = (input) =>
-    Effect.gen(function* () {
+  const issueOneTimeToken: PairingGrantStoreShape["issueOneTimeToken"] = Effect.fn(
+    "PairingGrantStore.issueOneTimeToken",
+  )(
+    function* (input) {
       const id = yield* crypto.randomUUIDv4;
       const credential = yield* generatePairingToken;
       const ttl = input?.ttl ?? DEFAULT_ONE_TIME_TOKEN_TTL_MINUTES;
@@ -246,10 +254,12 @@ export const make = Effect.fn("makePairingGrantStore")(function* () {
         expiresAt,
       });
       return issued;
-    }).pipe(Effect.mapError(toBootstrapCredentialError("Failed to issue pairing credential.")));
+    },
+    Effect.mapError(toBootstrapCredentialError("Failed to issue pairing credential.")),
+  );
 
-  const consume: PairingGrantStoreShape["consume"] = (credential) =>
-    Effect.gen(function* () {
+  const consume: PairingGrantStoreShape["consume"] = Effect.fn("PairingGrantStore.consume")(
+    function* (credential) {
       const now = yield* DateTime.now;
       const seededResult: ConsumeResult = yield* Ref.modify(
         seededGrantsRef,
@@ -351,14 +361,14 @@ export const make = Effect.fn("makePairingGrantStore")(function* () {
       }
 
       return yield* invalidBootstrapCredentialError("Bootstrap credential is no longer available.");
-    }).pipe(
-      Effect.mapError((cause) =>
-        cause._tag === "BootstrapCredentialInvalidError" ||
-        cause._tag === "BootstrapCredentialInternalError"
-          ? cause
-          : internalBootstrapCredentialError("Failed to consume bootstrap credential.", cause),
-      ),
-    );
+    },
+    Effect.mapError((cause) =>
+      cause._tag === "BootstrapCredentialInvalidError" ||
+      cause._tag === "BootstrapCredentialInternalError"
+        ? cause
+        : internalBootstrapCredentialError("Failed to consume bootstrap credential.", cause),
+    ),
+  );
 
   return {
     issueOneTimeToken,

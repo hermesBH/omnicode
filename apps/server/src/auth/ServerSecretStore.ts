@@ -64,6 +64,7 @@ export const make = Effect.fn("makeServerSecretStore")(function* () {
               }),
             ),
       ),
+      Effect.withSpan("ServerSecretStore.get"),
     );
 
   const set: ServerSecretStoreShape["set"] = (name, value) => {
@@ -99,6 +100,7 @@ export const make = Effect.fn("makeServerSecretStore")(function* () {
           ),
         );
       }),
+      Effect.withSpan("ServerSecretStore.set"),
     );
   };
 
@@ -162,6 +164,7 @@ export const make = Effect.fn("makeServerSecretStore")(function* () {
           ),
         );
       }),
+      Effect.withSpan("ServerSecretStore.getOrCreateRandom"),
     );
 
   const remove: ServerSecretStoreShape["remove"] = (name) =>
@@ -176,6 +179,7 @@ export const make = Effect.fn("makeServerSecretStore")(function* () {
               }),
             ),
       ),
+      Effect.withSpan("ServerSecretStore.remove"),
     );
 
   return {

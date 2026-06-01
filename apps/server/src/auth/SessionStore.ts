@@ -266,6 +266,7 @@ export const make = Effect.fn("makeSessionStore")(function* () {
           }),
         ),
       ),
+      Effect.withSpan("SessionStore.markConnected"),
     );
 
   const markDisconnected: SessionStoreShape["markDisconnected"] = (sessionId) =>
@@ -291,11 +292,12 @@ export const make = Effect.fn("makeSessionStore")(function* () {
           }),
         ),
       ),
+      Effect.withSpan("SessionStore.markDisconnected"),
     );
 
   const encodeClaims = Schema.encodeEffect(Schema.fromJsonString(SessionClaims));
-  const issue: SessionStoreShape["issue"] = (input) =>
-    Effect.gen(function* () {
+  const issue: SessionStoreShape["issue"] = Effect.fn("SessionStore.issue")(
+    function* (input) {
       const sessionId = AuthSessionId.make(yield* crypto.randomUUIDv4);
       const issuedAt = yield* DateTime.now;
       const expiresAt = DateTime.add(issuedAt, {
@@ -359,12 +361,12 @@ export const make = Effect.fn("makeSessionStore")(function* () {
         expiresAt: expiresAt,
         scopes: claims.scopes,
       } satisfies IssuedSession;
-    }).pipe(
-      Effect.mapError(toSessionCredentialInternalError("Failed to issue session credential.")),
-    );
+    },
+    Effect.mapError(toSessionCredentialInternalError("Failed to issue session credential.")),
+  );
 
-  const verify: SessionStoreShape["verify"] = (token) =>
-    Effect.gen(function* () {
+  const verify: SessionStoreShape["verify"] = Effect.fn("SessionStore.verify")(
+    function* (token) {
       const [encodedPayload, signature] = token.split(".");
       if (!encodedPayload || !signature) {
         return yield* new SessionCredentialInvalidError({
@@ -424,20 +426,22 @@ export const make = Effect.fn("makeSessionStore")(function* () {
         subject: claims.sub,
         scopes: claims.scopes,
       } satisfies VerifiedSession;
-    }).pipe(
-      Effect.mapError((cause) =>
-        cause._tag === "SessionCredentialInvalidError"
-          ? cause
-          : new SessionCredentialInternalError({
-              message: "Failed to verify session credential.",
-              cause,
-            }),
-      ),
-    );
+    },
+    Effect.mapError((cause) =>
+      cause._tag === "SessionCredentialInvalidError"
+        ? cause
+        : new SessionCredentialInternalError({
+            message: "Failed to verify session credential.",
+            cause,
+          }),
+    ),
+  );
 
   const encodeWsClaims = Schema.encodeEffect(Schema.fromJsonString(WebSocketClaims));
-  const issueWebSocketToken: SessionStoreShape["issueWebSocketToken"] = (sessionId, input) =>
-    Effect.gen(function* () {
+  const issueWebSocketToken: SessionStoreShape["issueWebSocketToken"] = Effect.fn(
+    "SessionStore.issueWebSocketToken",
+  )(
+    function* (sessionId, input) {
       const issuedAt = yield* DateTime.now;
       const expiresAt = DateTime.add(issuedAt, {
         milliseconds: Duration.toMillis(input?.ttl ?? DEFAULT_WEBSOCKET_TOKEN_TTL),
@@ -461,10 +465,14 @@ export const make = Effect.fn("makeSessionStore")(function* () {
         token: `${encodedPayload}.${signature}`,
         expiresAt,
       };
-    }).pipe(Effect.mapError(toSessionCredentialInternalError("Failed to issue websocket token.")));
+    },
+    Effect.mapError(toSessionCredentialInternalError("Failed to issue websocket token.")),
+  );
 
-  const verifyWebSocketToken: SessionStoreShape["verifyWebSocketToken"] = (token) =>
-    Effect.gen(function* () {
+  const verifyWebSocketToken: SessionStoreShape["verifyWebSocketToken"] = Effect.fn(
+    "SessionStore.verifyWebSocketToken",
+  )(
+    function* (token) {
       const [encodedPayload, signature] = token.split(".");
       if (!encodedPayload || !signature) {
         return yield* new SessionCredentialInvalidError({
@@ -522,19 +530,19 @@ export const make = Effect.fn("makeSessionStore")(function* () {
         subject: row.value.subject,
         scopes: row.value.scopes,
       } satisfies VerifiedSession;
-    }).pipe(
-      Effect.mapError((cause) =>
-        cause._tag === "SessionCredentialInvalidError"
-          ? cause
-          : new SessionCredentialInternalError({
-              message: "Failed to verify websocket token.",
-              cause,
-            }),
-      ),
-    );
+    },
+    Effect.mapError((cause) =>
+      cause._tag === "SessionCredentialInvalidError"
+        ? cause
+        : new SessionCredentialInternalError({
+            message: "Failed to verify websocket token.",
+            cause,
+          }),
+    ),
+  );
 
-  const listActive: SessionStoreShape["listActive"] = () =>
-    Effect.gen(function* () {
+  const listActive: SessionStoreShape["listActive"] = Effect.fn("SessionStore.listActive")(
+    function* () {
       const now = yield* DateTime.now;
       const connectedSessions = yield* Ref.get(connectedSessionsRef);
       const rows = yield* authSessions.listActive({ now });
@@ -552,10 +560,12 @@ export const make = Effect.fn("makeSessionStore")(function* () {
           connected: connectedSessions.has(row.sessionId),
         }),
       );
-    }).pipe(Effect.mapError(toSessionCredentialInternalError("Failed to list active sessions.")));
+    },
+    Effect.mapError(toSessionCredentialInternalError("Failed to list active sessions.")),
+  );
 
-  const revoke: SessionStoreShape["revoke"] = (sessionId) =>
-    Effect.gen(function* () {
+  const revoke: SessionStoreShape["revoke"] = Effect.fn("SessionStore.revoke")(
+    function* (sessionId) {
       const revokedAt = yield* DateTime.now;
       const revoked = yield* authSessions.revoke({
         sessionId,
@@ -570,10 +580,14 @@ export const make = Effect.fn("makeSessionStore")(function* () {
         yield* emitRemoved(sessionId);
       }
       return revoked;
-    }).pipe(Effect.mapError(toSessionCredentialInternalError("Failed to revoke session.")));
+    },
+    Effect.mapError(toSessionCredentialInternalError("Failed to revoke session.")),
+  );
 
-  const revokeAllExcept: SessionStoreShape["revokeAllExcept"] = (sessionId) =>
-    Effect.gen(function* () {
+  const revokeAllExcept: SessionStoreShape["revokeAllExcept"] = Effect.fn(
+    "SessionStore.revokeAllExcept",
+  )(
+    function* (sessionId) {
       const revokedAt = yield* DateTime.now;
       const revokedSessionIds = yield* authSessions.revokeAllExcept({
         currentSessionId: sessionId,
@@ -597,7 +611,9 @@ export const make = Effect.fn("makeSessionStore")(function* () {
         );
       }
       return revokedSessionIds.length;
-    }).pipe(Effect.mapError(toSessionCredentialInternalError("Failed to revoke other sessions.")));
+    },
+    Effect.mapError(toSessionCredentialInternalError("Failed to revoke other sessions.")),
+  );
 
   return {
     cookieName,

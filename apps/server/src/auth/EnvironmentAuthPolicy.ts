@@ -47,7 +47,8 @@ export const make = Effect.fn("makeEnvironmentAuthPolicy")(function* () {
   };
 
   return {
-    getDescriptor: () => Effect.succeed(descriptor),
+    getDescriptor: () =>
+      Effect.succeed(descriptor).pipe(Effect.withSpan("EnvironmentAuthPolicy.getDescriptor")),
   } satisfies EnvironmentAuthPolicyShape;
 });
 
