@@ -399,7 +399,7 @@ const createDesktopBridgeStub = (overrides?: {
       issued_token_type: "urn:ietf:params:oauth:token-type:access_token",
       token_type: "Bearer",
       expires_in: 3_600,
-      scope: "orchestration:read orchestration:operate terminal:operate review:write",
+      scope: "orchestration:read orchestration:operate terminal:operate review:write relay:read",
     }),
     fetchSshSessionState: vi.fn().mockResolvedValue({
       authenticated: true,
@@ -409,7 +409,7 @@ const createDesktopBridgeStub = (overrides?: {
         sessionMethods: ["browser-session-cookie", "bearer-access-token"],
         sessionCookieName: "t3_session",
       },
-      scopes: ["orchestration:read", "access:manage"],
+      scopes: ["orchestration:read", "access:write"],
       sessionMethod: "bearer-access-token",
       expiresAt: "2026-05-01T12:00:00.000Z",
     }),
@@ -509,7 +509,7 @@ describe("GeneralSettingsPanel observability", () => {
         makeClientSession({
           sessionId: "session-owner",
           subject: "browser-owner",
-          scopes: ["orchestration:read", "access:manage"],
+          scopes: ["orchestration:read", "access:write"],
           method: "browser-session-cookie",
           client: {
             label: "Chrome on Mac",
@@ -532,7 +532,7 @@ describe("GeneralSettingsPanel observability", () => {
           JSON.stringify({
             authenticated: true,
             auth: createBaseServerConfig().auth,
-            scopes: ["orchestration:read", "access:manage"],
+            scopes: ["orchestration:read", "access:write"],
             sessionMethod: "browser-session-cookie",
             expiresAt: "2036-05-07T00:00:00.000Z",
           }),
@@ -777,7 +777,7 @@ describe("GeneralSettingsPanel observability", () => {
       makeClientSession({
         sessionId: "session-owner",
         subject: "desktop-bootstrap",
-        scopes: ["orchestration:read", "access:manage"],
+        scopes: ["orchestration:read", "access:write"],
         method: "browser-session-cookie",
         client: {
           label: "This Mac",
@@ -904,7 +904,7 @@ describe("GeneralSettingsPanel observability", () => {
       makeClientSession({
         sessionId: "session-owner",
         subject: "desktop-bootstrap",
-        scopes: ["orchestration:read", "access:manage"],
+        scopes: ["orchestration:read", "access:write"],
         method: "browser-session-cookie",
         client: {
           label: "This Mac",

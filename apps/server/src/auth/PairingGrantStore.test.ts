@@ -57,6 +57,7 @@ it.layer(NodeServices.layer)("PairingGrantStore.layer", (it) => {
         "orchestration:operate",
         "terminal:operate",
         "review:write",
+        "relay:read",
       ]);
       expect(first.subject).toBe("one-time-token");
       expect(first.label).toBe("Julius iPhone");
@@ -103,8 +104,10 @@ it.layer(NodeServices.layer)("PairingGrantStore.layer", (it) => {
         "orchestration:operate",
         "terminal:operate",
         "review:write",
-        "access:manage",
-        "relay:manage",
+        "relay:read",
+        "access:read",
+        "access:write",
+        "relay:write",
       ]);
       expect(first.subject).toBe("desktop-bootstrap");
       expect(second._tag).toBe("BootstrapCredentialInvalidError");
@@ -143,7 +146,7 @@ it.layer(NodeServices.layer)("PairingGrantStore.layer", (it) => {
       const bootstrapCredentials = yield* PairingGrantStore.PairingGrantStore;
       const first = yield* bootstrapCredentials.issueOneTimeToken();
       const second = yield* bootstrapCredentials.issueOneTimeToken({
-        scopes: ["orchestration:read", "access:manage"],
+        scopes: ["orchestration:read", "access:write"],
       });
 
       const activeBeforeRevoke = yield* bootstrapCredentials.listActive();

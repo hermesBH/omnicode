@@ -51,7 +51,7 @@ it("formats issued sessions with the bearer token but omits tokens from listings
       sessionId: "session-1" as never,
       token: "secret-session-token",
       method: "bearer-access-token",
-      scopes: ["orchestration:read", "access:manage"],
+      scopes: ["orchestration:read", "access:write"],
       subject: "cli-issued-session",
       client: {
         label: "deploy-bot",
@@ -67,7 +67,7 @@ it("formats issued sessions with the bearer token but omits tokens from listings
       {
         sessionId: "session-1" as never,
         method: "bearer-access-token",
-        scopes: ["orchestration:read", "access:manage"],
+        scopes: ["orchestration:read", "access:write"],
         subject: "cli-issued-session",
         client: {
           label: "deploy-bot",

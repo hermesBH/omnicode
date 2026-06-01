@@ -235,8 +235,10 @@ it.layer(NodeServices.layer)("bin cli parsing", (it) => {
         "orchestration:operate",
         "terminal:operate",
         "review:write",
-        "access:manage",
-        "relay:manage",
+        "relay:read",
+        "access:read",
+        "access:write",
+        "relay:write",
       ]);
       assert.equal(listed.length, 1);
       assert.equal(listed[0]?.sessionId, issued.sessionId);
@@ -245,8 +247,10 @@ it.layer(NodeServices.layer)("bin cli parsing", (it) => {
         "orchestration:operate",
         "terminal:operate",
         "review:write",
-        "access:manage",
-        "relay:manage",
+        "relay:read",
+        "access:read",
+        "access:write",
+        "relay:write",
       ]);
       assert.equal("token" in (listed[0] ?? {}), false);
     }),

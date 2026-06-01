@@ -97,6 +97,7 @@ it.layer(NodeServices.layer)("EnvironmentAuth.layer", (it) => {
         "orchestration:operate",
         "terminal:operate",
         "review:write",
+        "relay:read",
       ]);
       expect(verified.subject).toBe("one-time-token");
     }).pipe(Effect.provide(makeEnvironmentAuthLayer())),
@@ -110,7 +111,7 @@ it.layer(NodeServices.layer)("EnvironmentAuth.layer", (it) => {
       const error = yield* serverAuth
         .exchangeBootstrapCredentialForAccessToken(
           pairingCredential.credential,
-          ["orchestration:read", "access:manage"],
+          ["orchestration:read", "access:write"],
           requestMetadata,
         )
         .pipe(Effect.flip);
@@ -177,8 +178,10 @@ it.layer(NodeServices.layer)("EnvironmentAuth.layer", (it) => {
         "orchestration:operate",
         "terminal:operate",
         "review:write",
-        "access:manage",
-        "relay:manage",
+        "relay:read",
+        "access:read",
+        "access:write",
+        "relay:write",
       ]);
       expect(verified.subject).toBe("administrative-bootstrap");
     }).pipe(Effect.provide(makeEnvironmentAuthLayer())),

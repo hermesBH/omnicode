@@ -129,7 +129,7 @@ describe("resolveInitialServerAuthGateState", () => {
     );
     const testApi = await installAuthApi({
       session: nextSession,
-      browserSession: () => Effect.succeed(browserSession(["orchestration:read", "access:manage"])),
+      browserSession: () => Effect.succeed(browserSession(["orchestration:read", "access:write"])),
     });
 
     const testWindow = installTestBrowser("http://localhost/");
@@ -315,7 +315,7 @@ describe("resolveInitialServerAuthGateState", () => {
     );
     const testApi = await installAuthApi({
       session: nextSession,
-      browserSession: () => Effect.succeed(browserSession(["orchestration:read", "access:manage"])),
+      browserSession: () => Effect.succeed(browserSession(["orchestration:read", "access:write"])),
     });
 
     const testWindow = installTestBrowser("http://localhost/");

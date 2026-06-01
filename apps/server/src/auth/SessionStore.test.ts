@@ -66,7 +66,7 @@ it.layer(NodeServices.layer)("SessionStore.layer", (it) => {
       const sessions = yield* SessionStore.SessionStore;
       const issued = yield* sessions.issue({
         subject: "desktop-bootstrap",
-        scopes: ["orchestration:read", "access:manage"],
+        scopes: ["orchestration:read", "access:write"],
         client: {
           label: "Desktop app",
           deviceType: "desktop",
@@ -79,7 +79,7 @@ it.layer(NodeServices.layer)("SessionStore.layer", (it) => {
 
       expect(verified.method).toBe("browser-session-cookie");
       expect(verified.subject).toBe("desktop-bootstrap");
-      expect(verified.scopes).toEqual(["orchestration:read", "access:manage"]);
+      expect(verified.scopes).toEqual(["orchestration:read", "access:write"]);
       expect(verified.client.label).toBe("Desktop app");
       expect(verified.client.browser).toBe("Electron");
       expect(verified.expiresAt?.toString()).toBe(issued.expiresAt.toString());
@@ -128,6 +128,7 @@ it.layer(NodeServices.layer)("SessionStore.layer", (it) => {
         "orchestration:operate",
         "terminal:operate",
         "review:write",
+        "relay:read",
       ]);
     }).pipe(Effect.provide(Layer.merge(makeSessionStoreLayer(), TestClock.layer()))),
   );
@@ -154,7 +155,7 @@ it.layer(NodeServices.layer)("SessionStore.layer", (it) => {
       const sessions = yield* SessionStore.SessionStore;
       const administrative = yield* sessions.issue({
         subject: "desktop-bootstrap",
-        scopes: ["orchestration:read", "access:manage"],
+        scopes: ["orchestration:read", "access:write"],
         client: {
           label: "Desktop app",
           deviceType: "desktop",

@@ -9,11 +9,13 @@ import {
 } from "lucide-react";
 import { type ReactNode, memo, useCallback, useEffect, useMemo, useState } from "react";
 import {
-  AuthAccessManageScope,
+  AuthAccessReadScope,
+  AuthAccessWriteScope,
   AuthAdministrativeScopes,
   AuthOrchestrationOperateScope,
   AuthOrchestrationReadScope,
-  AuthRelayManageScope,
+  AuthRelayReadScope,
+  AuthRelayWriteScope,
   AuthReviewWriteScope,
   AuthStandardClientScopes,
   AuthTerminalOperateScope,
@@ -150,12 +152,22 @@ const PAIRING_SCOPE_OPTIONS: ReadonlyArray<{
     description: "Create comments while reviewing changes.",
   },
   {
-    scope: AuthAccessManageScope,
+    scope: AuthAccessReadScope,
+    title: "View access",
+    description: "Inspect pairing links and authorized clients.",
+  },
+  {
+    scope: AuthAccessWriteScope,
     title: "Manage access",
     description: "Issue and revoke credentials for other clients.",
   },
   {
-    scope: AuthRelayManageScope,
+    scope: AuthRelayReadScope,
+    title: "View relay",
+    description: "Inspect managed relay connectivity.",
+  },
+  {
+    scope: AuthRelayWriteScope,
     title: "Manage relay",
     description: "Change managed tunnel connectivity.",
   },
@@ -1195,7 +1207,7 @@ const AuthorizedClientsHeaderAction = memo(function AuthorizedClientsHeaderActio
               </div>
               {pairingScopes.length === 0 ? (
                 <p className="text-xs text-destructive">Select at least one permission.</p>
-              ) : pairingScopes.includes(AuthAccessManageScope) ? (
+              ) : pairingScopes.includes(AuthAccessWriteScope) ? (
                 <p className="text-xs text-warning">
                   This client can create or revoke access for other devices.
                 </p>
@@ -1688,7 +1700,7 @@ export function ConnectionsSettings() {
   const setDefaultAdvertisedEndpointKey = useUiStateStore(
     (state) => state.setDefaultAdvertisedEndpointKey,
   );
-  const canManageLocalBackend = currentSessionScopes?.includes(AuthAccessManageScope) ?? false;
+  const canManageLocalBackend = currentSessionScopes?.includes(AuthAccessWriteScope) ?? false;
   const isLocalBackendNetworkAccessible = desktopBridge
     ? desktopServerExposureState?.mode === "network-accessible"
     : currentAuthPolicy === "remote-reachable";
@@ -2820,7 +2832,7 @@ export function ConnectionsSettings() {
         <SettingsSection title="Local backend access">
           <SettingsRow
             title="Administrative access"
-            description="Pairing links and client-session management require the access:manage scope for this backend."
+            description="Pairing links and client-session management require the access:write scope for this backend."
           />
         </SettingsSection>
       )}

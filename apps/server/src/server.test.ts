@@ -845,7 +845,7 @@ const exchangeAccessToken = (
           requested_token_type: AuthAccessTokenType,
           scope:
             options?.scope ??
-            "orchestration:read orchestration:operate terminal:operate review:write access:manage relay:manage",
+            "orchestration:read orchestration:operate terminal:operate review:write relay:read access:read access:write relay:write",
           ...(options?.clientMetadata?.label ? { client_label: options.clientMetadata.label } : {}),
           ...(options?.clientMetadata?.deviceType
             ? { client_device_type: options.clientMetadata.deviceType }
@@ -1149,7 +1149,7 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
       assert.equal(tokenBody.token_type, "Bearer");
       assert.equal(
         tokenBody.scope,
-        "orchestration:read orchestration:operate terminal:operate review:write access:manage relay:manage",
+        "orchestration:read orchestration:operate terminal:operate review:write relay:read access:read access:write relay:write",
       );
       assert.equal(typeof tokenBody.access_token, "string");
       assert.isTrue((tokenBody.access_token?.length ?? 0) > 0);
@@ -1173,8 +1173,10 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
         "orchestration:operate",
         "terminal:operate",
         "review:write",
-        "access:manage",
-        "relay:manage",
+        "relay:read",
+        "access:read",
+        "access:write",
+        "relay:write",
       ]);
     }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );
@@ -1207,10 +1209,10 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
 
       const { response: exchangeResponse, body: tokenBody } = yield* exchangeAccessToken(
         defaultDesktopBootstrapToken,
-        { scope: "access:manage" },
+        { scope: "access:write" },
       );
       assert.equal(exchangeResponse.status, 200);
-      assert.equal(tokenBody.scope, "access:manage");
+      assert.equal(tokenBody.scope, "access:write");
       assert.isDefined(tokenBody.access_token);
 
       const overbroadPairingResponse = yield* HttpClient.post("/api/auth/pairing-token", {
@@ -1226,7 +1228,7 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
         headers: {
           authorization: `Bearer ${tokenBody.access_token ?? ""}`,
         },
-        body: yield* HttpBody.json({ scopes: ["access:manage"] }),
+        body: yield* HttpBody.json({ scopes: ["access:write"] }),
       });
       const wsTicketResponse = yield* HttpClient.post("/api/auth/websocket-ticket", {
         headers: {
@@ -1383,7 +1385,7 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
         headers: {
           "user-agent": "undici",
         },
-        scope: "orchestration:read orchestration:operate terminal:operate review:write",
+        scope: "orchestration:read orchestration:operate terminal:operate review:write relay:read",
         clientMetadata: {
           label: "T3 Code Mobile",
           deviceType: "mobile",
@@ -1585,7 +1587,7 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
       assert.equal(pairedResponse.status, 403);
       assert.equal(pairedBody._tag, "EnvironmentScopeRequiredError");
       assert.equal(pairedBody.code, "insufficient_scope");
-      assert.equal(pairedBody.requiredScope, "access:manage");
+      assert.equal(pairedBody.requiredScope, "access:write");
       assert.equal(typeof pairedBody.traceId, "string");
     }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );
@@ -1693,6 +1695,65 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
       assert.equal(pairedClientPairingBody.code, "auth_invalid");
       assert.equal(pairedClientPairingBody.reason, "invalid_credential");
       assert.equal(typeof pairedClientPairingBody.traceId, "string");
+    }).pipe(Effect.provide(NodeHttpServer.layerTest)),
+  );
+
+  it.effect("separates access inventory reads from credential management writes", () =>
+    Effect.gen(function* () {
+      yield* buildAppUnderTest({
+        config: {
+          host: "0.0.0.0",
+        },
+      });
+
+      const ownerCookie = yield* getAuthenticatedSessionCookieHeader();
+      const issueScopedSession = Effect.fnUntraced(function* (
+        scope: "access:read" | "access:write",
+      ) {
+        const pairingResponse = yield* HttpClient.post("/api/auth/pairing-token", {
+          headers: {
+            cookie: ownerCookie,
+          },
+          body: yield* HttpBody.json({ scopes: [scope] }),
+        });
+        assert.equal(pairingResponse.status, 200);
+        const pairingBody = (yield* pairingResponse.json) as {
+          readonly credential: string;
+        };
+        return yield* getAuthenticatedSessionCookieHeader(pairingBody.credential);
+      });
+
+      const readCookie = yield* issueScopedSession("access:read");
+      const readListResponse = yield* HttpClient.get("/api/auth/clients", {
+        headers: {
+          cookie: readCookie,
+        },
+      });
+      const readWriteResponse = yield* HttpClient.post("/api/auth/pairing-token", {
+        headers: {
+          cookie: readCookie,
+        },
+        body: yield* HttpBody.json({}),
+      });
+      const readWriteBody = (yield* readWriteResponse.json) as {
+        readonly requiredScope: string;
+      };
+
+      const writeCookie = yield* issueScopedSession("access:write");
+      const writeListResponse = yield* HttpClient.get("/api/auth/clients", {
+        headers: {
+          cookie: writeCookie,
+        },
+      });
+      const writeListBody = (yield* writeListResponse.json) as {
+        readonly requiredScope: string;
+      };
+
+      assert.equal(readListResponse.status, 200);
+      assert.equal(readWriteResponse.status, 403);
+      assert.equal(readWriteBody.requiredScope, "access:write");
+      assert.equal(writeListResponse.status, 403);
+      assert.equal(writeListBody.requiredScope, "access:read");
     }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );
 

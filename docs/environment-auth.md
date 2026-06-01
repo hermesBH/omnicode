@@ -15,13 +15,16 @@ OAuth-style scope strings:
 | `orchestration:operate` | Dispatch user operations and mutate environment-side workspace state.    |
 | `terminal:operate`      | Create, attach, input, resize, clear, restart, and terminate terminals.  |
 | `review:write`          | Read review diff previews used to compose review feedback.               |
-| `access:manage`         | Create or revoke pairing links and inspect or revoke client sessions.    |
-| `relay:manage`          | Link, configure, or unlink managed relay connectivity.                   |
+| `access:read`           | Inspect pairing links and client sessions.                               |
+| `access:write`          | Create or revoke pairing links and client sessions.                      |
+| `relay:read`            | Inspect managed relay connectivity.                                      |
+| `relay:write`           | Link, configure, or unlink managed relay connectivity.                   |
 
-Ordinary pairing links grant the four client-operation scopes:
-`orchestration:read orchestration:operate terminal:operate review:write`.
+Ordinary pairing links grant the four client-operation scopes and read access to
+managed relay connectivity:
+`orchestration:read orchestration:operate terminal:operate review:write relay:read`.
 The desktop bootstrap credential and command-line administrative bootstrap
-credentials additionally grant `access:manage relay:manage`.
+credentials additionally grant `access:read access:write relay:write`.
 
 ## Authentication Flows
 
@@ -42,7 +45,7 @@ grant_type=urn:ietf:params:oauth:grant-type:token-exchange
 subject_token=<bootstrap credential>
 subject_token_type=urn:t3:params:oauth:token-type:environment-bootstrap
 requested_token_type=urn:ietf:params:oauth:token-type:access_token
-scope=orchestration:read orchestration:operate terminal:operate review:write
+scope=orchestration:read orchestration:operate terminal:operate review:write relay:read
 ```
 
 Clients may additionally submit `client_label`, `client_device_type`, and
@@ -59,13 +62,13 @@ The response has the token-exchange shape:
   "issued_token_type": "urn:ietf:params:oauth:token-type:access_token",
   "token_type": "Bearer",
   "expires_in": 3600,
-  "scope": "orchestration:read orchestration:operate terminal:operate review:write"
+  "scope": "orchestration:read orchestration:operate terminal:operate review:write relay:read"
 }
 ```
 
 Requested scopes must be a subset of the one-time bootstrap credential grant.
 An ordinary paired client therefore cannot exchange its grant for
-`access:manage` or `relay:manage`.
+`access:read`, `access:write`, or `relay:write`.
 
 ### WebSocket Ticket
 
@@ -74,7 +77,7 @@ a short-lived, single-purpose WebSocket ticket. This keeps bearer tokens and
 browser cookies out of WebSocket URLs while allowing the socket handshake to
 authenticate. The ticket carries its session's scopes; each RPC method then
 enforces `orchestration:read`, `orchestration:operate`, `terminal:operate`,
-`review:write`, or `access:manage` as appropriate. Review feedback submission
+`review:write`, or `access:read` as appropriate. Review feedback submission
 currently dispatches an orchestration operation, so clients performing it also
 need `orchestration:operate`. Creating a ticket is not
 authorization to call every RPC method.

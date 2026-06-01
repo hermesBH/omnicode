@@ -15,7 +15,7 @@ import {
   AuthOrchestrationReadScope,
   AuthReviewWriteScope,
   AuthTerminalOperateScope,
-  AuthAccessManageScope,
+  AuthAccessReadScope,
   AuthAccessStreamError,
   type AuthAccessStreamEvent,
   type AuthEnvironmentScope,
@@ -176,7 +176,7 @@ const RPC_REQUIRED_SCOPE = new Map<string, AuthEnvironmentScope>([
   [WS_METHODS.subscribeTerminalMetadata, AuthTerminalOperateScope],
   [WS_METHODS.subscribeServerConfig, AuthOrchestrationReadScope],
   [WS_METHODS.subscribeServerLifecycle, AuthOrchestrationReadScope],
-  [WS_METHODS.subscribeAuthAccess, AuthAccessManageScope],
+  [WS_METHODS.subscribeAuthAccess, AuthAccessReadScope],
 ]);
 
 function toAuthAccessStreamEvent(

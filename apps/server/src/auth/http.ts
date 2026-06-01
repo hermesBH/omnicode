@@ -1,9 +1,11 @@
 import {
-  AuthAccessManageScope,
+  AuthAccessReadScope,
+  AuthAccessWriteScope,
   AuthStandardClientScopes,
   AuthOrchestrationOperateScope,
   AuthOrchestrationReadScope,
-  AuthRelayManageScope,
+  AuthRelayReadScope,
+  AuthRelayWriteScope,
   AuthReviewWriteScope,
   AuthTerminalOperateScope,
   EnvironmentAuthInvalidError,
@@ -222,8 +224,10 @@ export const authHttpApiLayer = HttpApiBuilder.group(
                       AuthOrchestrationOperateScope,
                       AuthTerminalOperateScope,
                       AuthReviewWriteScope,
-                      AuthAccessManageScope,
-                      AuthRelayManageScope,
+                      AuthAccessReadScope,
+                      AuthAccessWriteScope,
+                      AuthRelayReadScope,
+                      AuthRelayWriteScope,
                     ]),
                   });
             if (requestedScopes === null)
@@ -269,7 +273,7 @@ export const authHttpApiLayer = HttpApiBuilder.group(
         Effect.fn("environment.auth.pairingCredential")(
           function* (args) {
             yield* annotateEnvironmentRequest(args.endpoint.name);
-            const session = yield* requireEnvironmentScope(AuthAccessManageScope);
+            const session = yield* requireEnvironmentScope(AuthAccessWriteScope);
             const delegatedScopes = args.payload.scopes ?? AuthStandardClientScopes;
             if (
               delegatedScopes.length === 0 ||
@@ -294,7 +298,7 @@ export const authHttpApiLayer = HttpApiBuilder.group(
         Effect.fn("environment.auth.pairingLinks")(
           function* (args) {
             yield* annotateEnvironmentRequest(args.endpoint.name);
-            yield* requireEnvironmentScope(AuthAccessManageScope);
+            yield* requireEnvironmentScope(AuthAccessReadScope);
             return yield* serverAuth.listPairingLinks();
           },
           Effect.catchTag("ServerAuthInternalError", (error) =>
@@ -307,7 +311,7 @@ export const authHttpApiLayer = HttpApiBuilder.group(
         Effect.fn("environment.auth.revokePairingLink")(
           function* (args) {
             yield* annotateEnvironmentRequest(args.endpoint.name);
-            yield* requireEnvironmentScope(AuthAccessManageScope);
+            yield* requireEnvironmentScope(AuthAccessWriteScope);
             const revoked = yield* serverAuth.revokePairingLink(args.payload.id);
             return { revoked };
           },
@@ -321,7 +325,7 @@ export const authHttpApiLayer = HttpApiBuilder.group(
         Effect.fn("environment.auth.clients")(
           function* (args) {
             yield* annotateEnvironmentRequest(args.endpoint.name);
-            const session = yield* requireEnvironmentScope(AuthAccessManageScope);
+            const session = yield* requireEnvironmentScope(AuthAccessReadScope);
             return yield* serverAuth.listClientSessions(session.sessionId);
           },
           Effect.catchTag("ServerAuthInternalError", (error) =>
@@ -334,7 +338,7 @@ export const authHttpApiLayer = HttpApiBuilder.group(
         Effect.fn("environment.auth.revokeClient")(
           function* (args) {
             yield* annotateEnvironmentRequest(args.endpoint.name);
-            const session = yield* requireEnvironmentScope(AuthAccessManageScope);
+            const session = yield* requireEnvironmentScope(AuthAccessWriteScope);
             const revoked = yield* serverAuth.revokeClientSession(
               session.sessionId,
               args.payload.sessionId,
@@ -354,7 +358,7 @@ export const authHttpApiLayer = HttpApiBuilder.group(
         Effect.fn("environment.auth.revokeOtherClients")(
           function* (args) {
             yield* annotateEnvironmentRequest(args.endpoint.name);
-            const session = yield* requireEnvironmentScope(AuthAccessManageScope);
+            const session = yield* requireEnvironmentScope(AuthAccessWriteScope);
             const revokedCount = yield* serverAuth.revokeOtherClientSessions(session.sessionId);
             return { revokedCount };
           },

@@ -71,6 +71,7 @@ export function createAuthenticatedSessionHandlers(getAuthDescriptor: () => Serv
             "orchestration:operate",
             "terminal:operate",
             "review:write",
+            "relay:read",
           ],
           sessionMethod: "browser-session-cookie",
           expiresAt: TEST_SESSION_EXPIRES_AT,

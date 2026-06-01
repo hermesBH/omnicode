@@ -1,5 +1,6 @@
 import {
   AuthAccessTokenType,
+  AuthAccessWriteScope,
   AuthAdministrativeScopes,
   AuthStandardClientScopes,
   type AuthAccessTokenResult,
@@ -186,8 +187,8 @@ const AUTHORIZATION_PREFIX = "Bearer ";
 const WEBSOCKET_TICKET_QUERY_PARAM = "wsTicket";
 
 const bySessionPriority = (left: AuthClientSession, right: AuthClientSession) => {
-  const leftCanManage = left.scopes.includes("access:manage");
-  const rightCanManage = right.scopes.includes("access:manage");
+  const leftCanManage = left.scopes.includes(AuthAccessWriteScope);
+  const rightCanManage = right.scopes.includes(AuthAccessWriteScope);
   if (leftCanManage !== rightCanManage) {
     return leftCanManage ? -1 : 1;
   }

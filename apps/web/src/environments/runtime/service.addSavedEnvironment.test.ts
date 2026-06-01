@@ -178,11 +178,11 @@ describe("addSavedEnvironment", () => {
     });
     mockBootstrapRemoteBearerSession.mockResolvedValue({
       access_token: "bearer-token",
-      scope: "orchestration:read orchestration:operate terminal:operate review:write",
+      scope: "orchestration:read orchestration:operate terminal:operate review:write relay:read",
     });
     mockFetchRemoteSessionState.mockResolvedValue({
       authenticated: true,
-      scopes: ["orchestration:read", "access:manage"],
+      scopes: ["orchestration:read", "access:write"],
     });
     mockResolveRemoteWebSocketConnectionUrl.mockResolvedValue(
       "wss://remote.example.com/?wsTicket=remote-token",
@@ -193,7 +193,7 @@ describe("addSavedEnvironment", () => {
     });
     mockBootstrapSshBearerSession.mockResolvedValue({
       access_token: "ssh-bearer-token",
-      scope: "orchestration:read orchestration:operate terminal:operate review:write",
+      scope: "orchestration:read orchestration:operate terminal:operate review:write relay:read",
     });
     mockPersistSavedEnvironmentRecord.mockResolvedValue(undefined);
     mockWriteSavedEnvironmentBearerToken.mockResolvedValue(false);
@@ -202,7 +202,7 @@ describe("addSavedEnvironment", () => {
     mockRemoveSavedEnvironmentBearerToken.mockResolvedValue(undefined);
     mockFetchSshSessionState.mockResolvedValue({
       authenticated: true,
-      scopes: ["orchestration:read", "access:manage"],
+      scopes: ["orchestration:read", "access:write"],
     });
     mockCreateEnvironmentConnection.mockImplementation(
       (input: { knownEnvironment: { environmentId: EnvironmentId }; client: unknown }) => ({
@@ -382,17 +382,17 @@ describe("addSavedEnvironment", () => {
     mockBootstrapSshBearerSession
       .mockResolvedValueOnce({
         access_token: "ssh-bearer-token",
-        scope: "orchestration:read orchestration:operate terminal:operate review:write",
+        scope: "orchestration:read orchestration:operate terminal:operate review:write relay:read",
       })
       .mockResolvedValueOnce({
         access_token: "ssh-bearer-token-2",
-        scope: "orchestration:read orchestration:operate terminal:operate review:write",
+        scope: "orchestration:read orchestration:operate terminal:operate review:write relay:read",
       });
     mockFetchSshSessionState
       .mockRejectedValueOnce(new Error("[ssh_http:401] Unauthorized"))
       .mockResolvedValueOnce({
         authenticated: true,
-        scopes: ["orchestration:read", "access:manage"],
+        scopes: ["orchestration:read", "access:write"],
       });
 
     const { connectDesktopSshEnvironment, resetEnvironmentServiceForTests } =
@@ -450,17 +450,17 @@ describe("addSavedEnvironment", () => {
     mockBootstrapSshBearerSession
       .mockResolvedValueOnce({
         access_token: "ssh-bearer-token",
-        scope: "orchestration:read orchestration:operate terminal:operate review:write",
+        scope: "orchestration:read orchestration:operate terminal:operate review:write relay:read",
       })
       .mockResolvedValueOnce({
         access_token: "ssh-bearer-token-2",
-        scope: "orchestration:read orchestration:operate terminal:operate review:write",
+        scope: "orchestration:read orchestration:operate terminal:operate review:write relay:read",
       });
     mockFetchSshSessionState
       .mockRejectedValueOnce(new Error("[ssh_http:401] Unauthorized"))
       .mockResolvedValueOnce({
         authenticated: true,
-        scopes: ["orchestration:read", "access:manage"],
+        scopes: ["orchestration:read", "access:write"],
       });
 
     const createdConnections: Array<{
@@ -744,7 +744,7 @@ describe("addSavedEnvironment", () => {
     );
     let resolveSessionState!: (value: {
       readonly authenticated: true;
-      readonly scopes: ReadonlyArray<"orchestration:read" | "access:manage">;
+      readonly scopes: ReadonlyArray<"orchestration:read" | "access:write">;
     }) => void;
     mockFetchRemoteSessionState.mockReturnValue(
       new Promise((resolve) => {
@@ -767,7 +767,7 @@ describe("addSavedEnvironment", () => {
     await disconnectSavedEnvironment(EnvironmentId.make("environment-1"));
     resolveSessionState({
       authenticated: true,
-      scopes: ["orchestration:read", "access:manage"],
+      scopes: ["orchestration:read", "access:write"],
     });
     await expect(reconnectPromise).resolves.toBeUndefined();
 

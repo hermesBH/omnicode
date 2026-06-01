@@ -79,8 +79,10 @@ it.layer(NodeServices.layer)("EnvironmentAuth administrative operations", (it) =
         "orchestration:operate",
         "terminal:operate",
         "review:write",
-        "access:manage",
-        "relay:manage",
+        "relay:read",
+        "access:read",
+        "access:write",
+        "relay:write",
       ]);
       expect(issued.client.deviceType).toBe("bot");
       expect(issued.client.label).toBe("deploy-bot");
@@ -90,8 +92,10 @@ it.layer(NodeServices.layer)("EnvironmentAuth administrative operations", (it) =
         "orchestration:operate",
         "terminal:operate",
         "review:write",
-        "access:manage",
-        "relay:manage",
+        "relay:read",
+        "access:read",
+        "access:write",
+        "relay:write",
       ]);
       expect(verified.method).toBe("bearer-access-token");
       expect(listedBeforeRevoke).toHaveLength(1);
