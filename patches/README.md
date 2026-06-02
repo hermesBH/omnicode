@@ -7,10 +7,12 @@ Extends T3 Code with an integrated GitHub issues sidebar, top-bar toggle button,
 ```bash
 git clone https://github.com/pingdotgg/t3code.git
 cd t3code
-git checkout b3e8c033
-bash /path/to/omnicode/patches/apply-omnicode.sh
+bash /path/to/omnicode/patches/apply-omnicode.sh --target .
 bun install
+bun run dev
 ```
+
+The apply script uses a **single combined patch** (`omnicode.patch`) — no sequential dependency issues. It also falls back to individual patches (0001–0009) if available.
 
 ## What You Get
 
@@ -21,19 +23,25 @@ bun install
 - **Clickable issue cards** — opens GitHub issue in a new tab
 - **Loading/error/empty states** — skeleton loading, error message with retry, "all clear!" empty state
 
-## Patch Series (9 patches)
+## What's in the Patch
 
-| # | What | Size |
-|---|------|------|
-| 1 | Infrastructure: workspace config, package.json, tsconfig | 289 lines |
-| 2 | Contracts: @omnicode/contracts Effect Schema types | 442 lines |
-| 3 | Plugin: extensible plugin system (discovery, registry, hooks) | 1,012 lines |
-| 4 | GitHub: Octokit-based API client (Issues, PRs, Repos, Reviews) | 1,131 lines |
-| 5 | AI: agent framework + CodeReviewAgent, IssueTriageAgent | 1,087 lines |
-| 6 | Server: OmniCode service layer + REST router + VCS integration | 1,713 lines |
-| 7 | Web UI: IssuesSidebar, BranchToolbar toggle, ChatHeader toggle | 1,844 lines |
-| 8 | Docs: SPEC.md architecture, updated README | 1,209 lines |
-| 9 | Apply script + this README | 186 lines |
+| Area | Files | Description |
+|------|-------|-------------|
+| Infrastructure | `package.json`, `turbo.json`, `tsconfig.base.json` | Workspace config, catalog entries (`@octokit/rest`, etc.), turbo pipeline |
+| Contracts | `packages/omnicode-contracts/` | Effect Schema types for repos, issues, agents, extensions |
+| Plugin | `packages/omnicode-plugin/` | Extensible plugin system (discovery, registry, hooks) |
+| GitHub | `packages/omnicode-github/` | Octokit-based API client (Issues, PRs, Repos, Reviews) |
+| AI | `packages/omnicode-ai/` | Agent framework + CodeReviewAgent, IssueTriageAgent |
+| Server | `packages/core/`, `apps/server/` | OmniCode service layer + REST router + server DI wiring |
+| Web UI | `apps/web/src/components/IssuesSidebar.tsx`, `BranchToolbar.tsx`, `ChatView.tsx`, `ChatHeader.tsx`, routes | Right-side issues panel + top-bar toggle |
+| Docs | `SPEC.md`, `README.md` | Architecture specification |
+
+## Requirements
+
+- T3 Code checkout at https://github.com/pingdotgg/t3code.git
+- Bun package manager
+- The patch works on macOS and Linux
+- For private repos: set `GITHUB_TOKEN` env var
 
 ## How the Issues Sidebar Works
 
@@ -48,29 +56,16 @@ bun install
 6. Issues render as clickable cards → click opens GitHub issue
 ```
 
-## Files Changed
+## Troubleshooting
 
-**New files:**
-- `packages/omnicode-contracts/` — Effect Schema type definitions
-- `packages/omnicode-plugin/` — Plugin system
-- `packages/omnicode-github/` — Octokit-based GitHub API
-- `packages/omnicode-ai/` — AI agent framework  
-- `packages/core/src/omnicode/` — Server layer + REST router
-- `apps/web/src/components/IssuesSidebar.tsx` — Right-side issues panel
-- `apps/web/src/issuesRouteSearch.ts` — Issues URL search param
-- `apps/web/src/lib/omniCodeIssueStore.ts` — Global issue store
-- `apps/web/src/lib/omnicodeProjectDetector.ts` — Project/repo detection hooks
-- `SPEC.md` — Full architecture specification
+**`ERR_MODULE_NOT_FOUND: Cannot find package '@t3tools/core'`**
+→ Run `bun install` again. The patch adds workspace packages that need to be linked.
 
-**Modified files:**
-- `apps/web/src/components/BranchToolbar.tsx` — Adds ◉ issues toggle button
-- `apps/web/src/components/ChatView.tsx` — Passes issues props to BranchToolbar
-- `apps/web/src/components/chat/ChatHeader.tsx` — Adds ◉ issues toggle
-- `apps/web/src/routes/_chat.$environmentId.$threadId.tsx` — IssuesInlineSidebar + cwd derivation
-- `apps/web/src/routes/__root.tsx` — Auto-issue detection hook
-- `apps/server/src/server.ts` — OmniCode services wired into DI graph
-- `package.json` / `turbo.json` / `tsconfig.base.json` — Workspace config
-- `README.md` — Updated project readme
+**`bun install` fails with dependency resolution errors**
+→ Make sure you're running a recent Bun version (`bun --version` ≥ 1.1). The patch adds `@octokit/rest` to the dependency catalog.
+
+**Patches won't apply (conflicts)**
+→ Use the combined `omnicode.patch` instead of individual patches. Make sure the working tree is clean before applying.
 
 ## No Behavior Changed
 
