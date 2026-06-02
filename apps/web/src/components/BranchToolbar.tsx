@@ -2,6 +2,7 @@ import { scopeProjectRef, scopeThreadRef } from "@t3tools/client-runtime";
 import type { EnvironmentId, ThreadId } from "@t3tools/contracts";
 import {
   ChevronDownIcon,
+  CircleDotIcon,
   CloudIcon,
   FolderGit2Icon,
   FolderGitIcon,
@@ -37,6 +38,8 @@ import {
   MenuTrigger,
 } from "./ui/menu";
 import { Separator } from "./ui/separator";
+import { Toggle } from "./ui/toggle";
+import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
 
 interface BranchToolbarProps {
   environmentId: EnvironmentId;
@@ -51,6 +54,8 @@ interface BranchToolbarProps {
   onComposerFocusRequest?: () => void;
   availableEnvironments?: readonly EnvironmentOption[];
   onEnvironmentChange?: (environmentId: EnvironmentId) => void;
+  issuesOpen?: boolean;
+  onToggleIssues?: () => void;
 }
 
 interface MobileRunContextSelectorProps {
@@ -202,6 +207,8 @@ export const BranchToolbar = memo(function BranchToolbar({
   onComposerFocusRequest,
   availableEnvironments,
   onEnvironmentChange,
+  issuesOpen,
+  onToggleIssues,
 }: BranchToolbarProps) {
   const threadRef = useMemo(
     () => scopeThreadRef(environmentId, threadId),
@@ -288,6 +295,27 @@ export const BranchToolbar = memo(function BranchToolbar({
         {...(onCheckoutPullRequestRequest ? { onCheckoutPullRequestRequest } : {})}
         {...(onComposerFocusRequest ? { onComposerFocusRequest } : {})}
       />
+      {onToggleIssues && (
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <Toggle
+                className="shrink-0"
+                pressed={issuesOpen ?? false}
+                onPressedChange={onToggleIssues}
+                aria-label="Toggle issues sidebar"
+                variant="outline"
+                size="xs"
+              >
+                <CircleDotIcon className="size-3" />
+              </Toggle>
+            }
+          />
+          <TooltipPopup side="bottom">
+            Toggle issues sidebar
+          </TooltipPopup>
+        </Tooltip>
+      )}
     </div>
   );
 });

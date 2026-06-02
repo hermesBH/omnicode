@@ -45,6 +45,7 @@ import { readEnvironmentApi } from "../environmentApi";
 import { isElectron } from "../env";
 import { readLocalApi } from "../localApi";
 import { parseDiffRouteSearch, stripDiffSearchParams } from "../diffRouteSearch";
+import { stripIssuesSearchParams } from "../issuesRouteSearch";
 import {
   collapseExpandedComposerCursor,
   parseStandaloneComposerSlashCommand,
@@ -342,14 +343,16 @@ type ChatViewProps =
       environmentId: EnvironmentId;
       threadId: ThreadId;
       onDiffPanelOpen?: () => void;
+      onIssuesPanelOpen?: () => void;
       reserveTitleBarControlInset?: boolean;
       routeKind: "server";
       draftId?: never;
-    }
+  }
   | {
       environmentId: EnvironmentId;
       threadId: ThreadId;
       onDiffPanelOpen?: () => void;
+      onIssuesPanelOpen?: () => void;
       reserveTitleBarControlInset?: boolean;
       routeKind: "draft";
       draftId: DraftId;
@@ -771,6 +774,7 @@ export default function ChatView(props: ChatViewProps) {
     threadId,
     routeKind,
     onDiffPanelOpen,
+    onIssuesPanelOpen,
     reserveTitleBarControlInset = true,
   } = props;
   const draftId = routeKind === "draft" ? props.draftId : null;
@@ -968,6 +972,7 @@ export default function ChatView(props: ChatViewProps) {
   const isLocalDraftThread = !isServerThread && localDraftThread !== undefined;
   const canCheckoutPullRequestIntoThread = isLocalDraftThread;
   const diffOpen = rawSearch.diff === "1";
+  const issuesOpen = rawSearch.issues === "1";
   const activeThreadId = activeThread?.id ?? null;
   const runningTerminalIds = useThreadRunningTerminalIds({
     environmentId: activeThread?.environmentId ?? null,
@@ -1921,6 +1926,27 @@ export default function ChatView(props: ChatViewProps) {
       },
     });
   }, [diffOpen, environmentId, isServerThread, navigate, onDiffPanelOpen, threadId]);
+
+  const onToggleIssues = useCallback(() => {
+    if (!isServerThread) {
+      return;
+    }
+    if (!issuesOpen) {
+      onIssuesPanelOpen?.();
+    }
+    void navigate({
+      to: "/$environmentId/$threadId",
+      params: {
+        environmentId,
+        threadId,
+      },
+      replace: true,
+      search: (previous) => {
+        const rest = stripIssuesSearchParams(previous);
+        return issuesOpen ? { ...rest, issues: undefined } : { ...rest, issues: "1" };
+      },
+    });
+  }, [issuesOpen, environmentId, isServerThread, navigate, onIssuesPanelOpen, threadId]);
 
   const envLocked = Boolean(
     activeThread &&
@@ -3755,12 +3781,15 @@ export default function ChatView(props: ChatViewProps) {
           diffToggleShortcutLabel={diffPanelShortcutLabel}
           gitCwd={gitCwd}
           diffOpen={diffOpen}
+          issuesOpen={issuesOpen}
+          issuesToggleShortcutLabel={null}
           onRunProjectScript={runProjectScript}
           onAddProjectScript={saveProjectScript}
           onUpdateProjectScript={updateProjectScript}
           onDeleteProjectScript={deleteProjectScript}
           onToggleTerminal={toggleTerminalVisibility}
           onToggleDiff={onToggleDiff}
+          onToggleIssues={onToggleIssues}
         />
       </header>
 
@@ -3923,6 +3952,8 @@ export default function ChatView(props: ChatViewProps) {
                   : {})}
                 {...(hasMultipleEnvironments ? { onEnvironmentChange } : {})}
                 availableEnvironments={logicalProjectEnvironments}
+                issuesOpen={issuesOpen}
+                onToggleIssues={onToggleIssues}
               />
             )}
           </div>

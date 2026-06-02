@@ -20,6 +20,7 @@ import {
   WebSocketConnectionCoordinator,
   WebSocketConnectionSurface,
 } from "../components/WebSocketConnectionSurface";
+import { useOmniCodeAutoIssue } from "../lib/omniCodeIssueStore";
 import { Button } from "../components/ui/button";
 import {
   AnchoredToastProvider,
@@ -112,6 +113,9 @@ function RootRouteView() {
       window.cancelAnimationFrame(frame);
     };
   }, [pathname]);
+
+  // Auto-populate issues for all open projects
+  useOmniCodeAutoIssue();
 
   if (pathname === "/pair") {
     return <Outlet />;
