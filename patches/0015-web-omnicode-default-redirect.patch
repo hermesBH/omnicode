@@ -1,0 +1,13 @@
+diff --git a/apps/web/src/routes/omnicode.tsx b/apps/web/src/routes/omnicode.tsx
+index 1694b2f6..edbed810 100644
+--- a/apps/web/src/routes/omnicode.tsx
++++ b/apps/web/src/routes/omnicode.tsx
+@@ -92,7 +92,7 @@ export const Route = createFileRoute("/omnicode")({
+     }
+ 
+     if (location.pathname === "/omnicode") {
+-      throw redirect({ to: "/omnicode/repos", replace: true });
++      throw redirect({ to: "/omnicode/issues", replace: true });
+     }
+   },
+   component: OmniCodeRouteLayout,

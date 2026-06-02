@@ -1,11 +1,3 @@
-From b3e8c033 Mon Sep 17 00:00:00 2006
-From: *** Dev <dev@omnicode.dev>
-Date: Tue, 2 Jun 2026 00:00:00 +0000
-Subject: [PATCH 2/8] Contracts: Effect Schema types for GitHub, AI agents, and plugin extensions
-
-Define contract schemas: AiProviderKind, AiProviderConfig, RepositoryView, RepoSearchQuery, RepoSearchResult, IssueState, IssueSort, IssueListQuery, IssueCreateInput, IssueView, AgentKind, AgentExecutionRequest, AgentExecutionResult, AgentInfo, ExtensionPoint, ProviderType, AuthMethod, PluginContribution, PaintPosition, ExtensionSchema.
----
-
 diff --git a/packages/omnicode-contracts/src/agents.ts b/packages/omnicode-contracts/src/agents.ts
 new file mode 100644
 index 00000000..98b97f7b

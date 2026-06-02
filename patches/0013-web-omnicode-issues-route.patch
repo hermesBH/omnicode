@@ -1,0 +1,480 @@
+diff --git a/apps/web/src/routes/omnicode.issues.tsx b/apps/web/src/routes/omnicode.issues.tsx
+new file mode 100644
+index 00000000..7e83915a
+--- /dev/null
++++ b/apps/web/src/routes/omnicode.issues.tsx
+@@ -0,0 +1,474 @@
++import { createFileRoute } from "@tanstack/react-router";
++import {
++  useCallback,
++  useEffect,
++  useMemo,
++  useRef,
++  useState,
++} from "react";
++import {
++  AlertCircleIcon,
++  ArrowRightIcon,
++  BugIcon,
++  CheckCircle2Icon,
++  CircleIcon,
++  ExternalLinkIcon,
++  GitPullRequestIcon,
++  GitBranchIcon,
++  InboxIcon,
++  Loader2Icon,
++  RefreshCwIcon,
++  ServerIcon,
++  ZapIcon,
++} from "lucide-react";
++
++import { Badge } from "../components/ui/badge";
++import { Button } from "../components/ui/button";
++import {
++  Card,
++  CardHeader,
++  CardTitle,
++  CardDescription,
++  CardPanel,
++} from "../components/ui/card";
++import {
++  Empty,
++  EmptyHeader,
++  EmptyTitle,
++  EmptyDescription,
++  EmptyContent,
++  EmptyMedia,
++} from "../components/ui/empty";
++import { ScrollArea } from "../components/ui/scroll-area";
++import { Skeleton } from "../components/ui/skeleton";
++
++import {
++  useOmniCodeProjectDetector,
++  useOmniCodeIssueData,
++  useOmniCodeWorktreeFlow,
++  type DetectedRepo,
++  type OmniCodeIssue,
++  type OmniCodeProjectStatus,
++} from "../lib/omnicodeProjectDetector";
++
++// ---------------------------------------------------------------------------
++// Route Definition
++// ---------------------------------------------------------------------------
++
++export const Route = createFileRoute("/omnicode/issues")({
++  component: OmniCodeIssuesPage,
++});
++
++// ---------------------------------------------------------------------------
++// Helpers
++// ---------------------------------------------------------------------------
++
++function formatRelativeTime(dateStr: string): string {
++  const now = Date.now();
++  const then = new Date(dateStr).getTime();
++  const diffMs = now - then;
++  const diffMinutes = Math.floor(diffMs / 60000);
++  if (diffMinutes < 1) return "just now";
++  if (diffMinutes < 60) return `${diffMinutes}m ago`;
++  const diffHours = Math.floor(diffMinutes / 60);
++  if (diffHours < 24) return `${diffHours}h ago`;
++  const diffDays = Math.floor(diffHours / 24);
++  if (diffDays < 30) return `${diffDays}d ago`;
++  return new Date(dateStr).toLocaleDateString();
++}
++
++function repoLabelClass(label: string): string {
++  const lower = label.toLowerCase();
++  if (lower.includes("bug")) return "bg-red-500/10 text-red-500 border-red-500/30";
++  if (lower.includes("enhancement") || lower.includes("feature"))
++    return "bg-purple-500/10 text-purple-500 border-purple-500/30";
++  if (lower.includes("good first"))
++    return "bg-green-500/10 text-green-500 border-green-500/30";
++  if (lower.includes("help wanted"))
++    return "bg-amber-500/10 text-amber-500 border-amber-500/30";
++  if (lower.includes("documentation"))
++    return "bg-blue-500/10 text-blue-500 border-blue-500/30";
++  return "bg-muted/50 text-muted-foreground border-border/50";
++}
++
++function slugify(text: string, maxLen = 40): string {
++  return text
++    .toLowerCase()
++    .replace(/[^a-z0-9]+/g, "-")
++    .replace(/^-+|-+$/g, "")
++    .slice(0, maxLen)
++    .replace(/-+$/, "");
++}
++
++// ---------------------------------------------------------------------------
++// Sub-components
++// ---------------------------------------------------------------------------
++
++/**
++ * Header shown when no git projects are detected.
++ * Guides the user to open a project with a GitHub remote.
++ */
++function NoProjectsDetected() {
++  return (
++    <div className="flex flex-1 items-center justify-center p-8">
++      <Empty>
++        <EmptyMedia>
++          <div className="flex size-16 items-center justify-center rounded-2xl border border-dashed border-muted-foreground/30 bg-muted/20">
++            <ServerIcon className="size-8 text-muted-foreground/40" />
++          </div>
++        </EmptyMedia>
++        <EmptyHeader>
++          <EmptyTitle>No Git projects detected</EmptyTitle>
++          <EmptyDescription>
++            Open a project with a GitHub remote to see its issues and pull
++            requests here.
++          </EmptyDescription>
++        </EmptyHeader>
++      </Empty>
++    </div>
++  );
++}
++
++/**
++ * Loading skeleton for a project card.
++ */
++function ProjectCardSkeleton() {
++  return (
++    <Card className="overflow-hidden border-muted/40">
++      <CardPanel className="p-4">
++        <div className="flex items-center gap-3">
++          <Skeleton className="size-5 rounded-full" />
++          <div className="flex-1">
++            <Skeleton className="mb-1 h-4 w-40" />
++            <Skeleton className="h-3 w-60" />
++          </div>
++          <Skeleton className="size-8 rounded-md" />
++        </div>
++      </CardPanel>
++    </Card>
++  );
++}
++
++/**
++ * Issue row component – shows issue number, title, labels, and action.
++ */
++function IssueRow({
++  issue,
++  repo,
++  onOpenWorktree,
++  worktreeInProgress,
++}: {
++  issue: OmniCodeIssue;
++  repo: DetectedRepo;
++  onOpenWorktree: (issue: OmniCodeIssue, repo: DetectedRepo) => void;
++  worktreeInProgress: number | null;
++}) {
++  const isLoading = worktreeInProgress === issue.number;
++
++  return (
++    <div className="group flex items-start gap-3 rounded-md px-2 py-1.5 transition-colors hover:bg-accent/30">
++      {/* Issue state icon */}
++      <span className="mt-0.5 shrink-0">
++        {issue.state === "open" ? (
++          <CircleIcon className="size-4 fill-green-500/20 text-green-500" aria-hidden="true" />
++        ) : issue.state === "closed" ? (
++          <CheckCircle2Icon className="size-4 fill-purple-500/20 text-purple-500" aria-hidden="true" />
++        ) : (
++          <CircleIcon className="size-4 text-muted-foreground" aria-hidden="true" />
++        )}
++      </span>
++
++      {/* Issue details */}
++      <div className="min-w-0 flex-1">
++        <div className="flex items-center gap-1.5 text-[13px]">
++          <a
++            href={issue.htmlUrl}
++            target="_blank"
++            rel="noreferrer"
++            className="truncate font-medium text-foreground hover:text-primary hover:underline"
++            onClick={(e) => e.stopPropagation()}
++          >
++            {issue.title}
++          </a>
++          <ExternalLinkIcon className="size-3 shrink-0 text-muted-foreground/40 opacity-0 group-hover:opacity-100" />
++        </div>
++        <div className="mt-0.5 flex items-center gap-2 text-[11px] text-muted-foreground/60">
++          <span>#{issue.number}</span>
++          {issue.user && <span>by {issue.user.login}</span>}
++          <span>{formatRelativeTime(issue.updatedAt)}</span>
++        </div>
++        {issue.labels.length > 0 && (
++          <div className="mt-1 flex flex-wrap gap-1">
++            {issue.labels.map((label) => (
++              <span
++                key={label.name}
++                className={`inline-block rounded-full border px-1.5 py-0.5 text-[10px] font-medium leading-tight ${repoLabelClass(label.name)}`}
++              >
++                {label.name}
++              </span>
++            ))}
++          </div>
++        )}
++      </div>
++
++      {/* Worktree action */}
++      <Button
++        variant="ghost"
++        size="sm"
++        className="mt-0.5 shrink-0 gap-1.5 text-[11px] text-muted-foreground/60 hover:text-primary"
++        onClick={() => onOpenWorktree(issue, repo)}
++        disabled={isLoading}
++        aria-label={`Create worktree for issue #${issue.number}`}
++      >
++        {isLoading ? (
++          <>
++            <Loader2Icon className="size-3 animate-spin" />
++            <span>Creating...</span>
++          </>
++        ) : (
++          <>
++            <GitBranchIcon className="size-3" />
++            <span className="hidden sm:inline">Worktree</span>
++          </>
++        )}
++      </Button>
++
++      {/* Open in browser */}
++      <Button
++        variant="ghost"
++        size="sm"
++        className="mt-0.5 shrink-0 text-muted-foreground/40 hover:text-foreground"
++        onClick={() => window.open(issue.htmlUrl, "_blank")}
++        aria-label={`Open issue #${issue.number} in browser`}
++      >
++        <ExternalLinkIcon className="size-3" />
++      </Button>
++    </div>
++  );
++}
++
++/**
++ * Repo card – shows a detected repo, its open issues, and provides worktree
++ * creation.
++ */
++function RepoCard({
++  status,
++  onOpenWorktree,
++  worktreeInProgress,
++}: {
++  status: OmniCodeProjectStatus;
++  onOpenWorktree: (issue: OmniCodeIssue, repo: DetectedRepo) => void;
++  worktreeInProgress: number | null;
++}) {
++  const { repo, issues, loading, error } = status;
++
++  return (
++    <Card className="overflow-hidden border-muted/30">
++      <CardPanel className="p-0">
++        {/* Repo header */}
++        <div className="flex items-center justify-between border-b border-border/50 px-4 py-2.5">
++          <a
++            href={
++              repo.provider === "github"
++                ? `https://github.com/${repo.owner}/${repo.repo}`
++                : `https://${repo.provider}.com/${repo.owner}/${repo.repo}`
++            }
++            target="_blank"
++            rel="noreferrer"
++            className="flex items-center gap-2 overflow-hidden"
++          >
++            {repo.provider === "github" ? (
++              <svg className="size-4 shrink-0" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
++                <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z" />
++              </svg>
++            ) : (
++              <GitBranchIcon className="size-4 shrink-0 text-muted-foreground" />
++            )}
++            <span className="truncate text-sm font-medium text-foreground">
++              {repo.owner}/{repo.repo}
++            </span>
++          </a>
++
++          <span className="shrink-0 text-[11px] text-muted-foreground/50">
++            {repo.cwd
++              ? repo.cwd.split("/").pop() ?? repo.cwd
++              : repo.projectId}
++          </span>
++        </div>
++
++        {/* Issues list */}
++        <div className="py-1">
++          {loading ? (
++            <div className="flex items-center justify-center gap-2 px-4 py-6 text-xs text-muted-foreground/60">
++              <Loader2Icon className="size-3 animate-spin" />
++              <span>Loading issues...</span>
++            </div>
++          ) : error ? (
++            <div className="flex items-center justify-center gap-2 px-4 py-6 text-xs text-red-500/70">
++              <AlertCircleIcon className="size-3" />
++              <span>{error}</span>
++            </div>
++          ) : issues.length === 0 ? (
++            <div className="flex items-center justify-center gap-2 px-4 py-6 text-xs text-muted-foreground/50">
++              <InboxIcon className="size-3" />
++              <span>No open issues</span>
++            </div>
++          ) : (
++            <div className="divide-y divide-border/20 px-2">
++              {issues.map((issue) => (
++                <IssueRow
++                  key={issue.number}
++                  issue={issue}
++                  repo={repo}
++                  onOpenWorktree={onOpenWorktree}
++                  worktreeInProgress={worktreeInProgress}
++                />
++              ))}
++            </div>
++          )}
++        </div>
++      </CardPanel>
++    </Card>
++  );
++}
++
++// ---------------------------------------------------------------------------
++// Main Page Component
++// ---------------------------------------------------------------------------
++
++/**
++ * OmniCode Issues Route Page
++ *
++ * - Auto-detects all T3 Code projects with git remotes
++ * - Fetches open issues for each detected repo
++ * - Clicking an issue creates a worktree + opens a chat thread
++ * - Shows a real-time loading state as issues are fetched
++ */
++function OmniCodeIssuesPage() {
++  const detectedRepos = useOmniCodeProjectDetector();
++  const statusMap = useOmniCodeIssueData(detectedRepos);
++  const openIssueWorktree = useOmniCodeWorktreeFlow();
++  const [worktreeInProgress, setWorktreeInProgress] = useState<number | null>(
++    null,
++  );
++  const toastTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
++
++  // Show a toast-like notification when a worktree is created
++  const [toast, setToast] = useState<{
++    message: string;
++    type: "success" | "error";
++  } | null>(null);
++
++  useEffect(() => {
++    if (toast) {
++      if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
++      toastTimeoutRef.current = setTimeout(() => setToast(null), 4000);
++      return () => {
++        if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
++      };
++    }
++  }, [toast]);
++
++  const handleOpenWorktree = useCallback(
++    async (issue: OmniCodeIssue, repo: DetectedRepo) => {
++      if (worktreeInProgress !== null) return;
++      setWorktreeInProgress(issue.number);
++
++      try {
++        const result = await openIssueWorktree(repo, issue);
++
++        if (result) {
++          setToast({
++            message: `Created worktree for #${issue.number} on branch ${result.branch}`,
++            type: "success",
++          });
++        } else {
++          setToast({
++            message: `Failed to create worktree for #${issue.number}`,
++            type: "error",
++          });
++        }
++      } catch {
++        setToast({
++          message: `Error creating worktree for #${issue.number}`,
++          type: "error",
++        });
++      } finally {
++        setWorktreeInProgress(null);
++      }
++    },
++    [openIssueWorktree, worktreeInProgress],
++  );
++
++  const sortedRepoKeys = useMemo(() => {
++    return Array.from(statusMap.entries()).sort((a, b) => {
++      const aName = `${a[1].repo.owner}/${a[1].repo.repo}`;
++      const bName = `${b[1].repo.owner}/${b[1].repo.repo}`;
++      return aName.localeCompare(bName);
++    });
++  }, [statusMap]);
++
++  return (
++    <ScrollArea className="h-full">
++      <div className="flex flex-col gap-4 p-4 sm:p-6">
++        {/* Header */}
++        <div className="flex items-center justify-between">
++          <div>
++            <h2 className="text-base font-semibold text-foreground">
++              Project Issues
++            </h2>
++            <p className="mt-0.5 text-[13px] text-muted-foreground/70">
++              {detectedRepos.length > 0
++                ? `${detectedRepos.length} git project${detectedRepos.length > 1 ? "s" : ""} detected`
++                : "Open a project to get started"}
++            </p>
++          </div>
++        </div>
++
++        {/* Content */}
++        {detectedRepos.length === 0 ? (
++          <NoProjectsDetected />
++        ) : sortedRepoKeys.length === 0 ? (
++          <div className="flex flex-col gap-3">
++            {detectedRepos.map((repo) => (
++              <ProjectCardSkeleton key={`${repo.owner}/${repo.repo}`} />
++            ))}
++          </div>
++        ) : (
++          <div className="flex flex-col gap-3">
++            {sortedRepoKeys.map(([key, status]) => (
++              <RepoCard
++                key={key}
++                status={status}
++                onOpenWorktree={handleOpenWorktree}
++                worktreeInProgress={worktreeInProgress}
++              />
++            ))}
++          </div>
++        )}
++
++        {/* Bottom spacing */}
++        <div className="h-8" />
++      </div>
++
++      {/* Toast notification */}
++      {toast && (
++        <div
++          className={`fixed bottom-6 right-6 z-50 flex items-center gap-2 rounded-lg border px-4 py-3 text-sm shadow-lg transition-all ${
++            toast.type === "success"
++              ? "border-green-500/30 bg-green-500/10 text-green-500"
++              : "border-red-500/30 bg-red-500/10 text-red-500"
++          }`}
++          role="alert"
++        >
++          {toast.type === "success" ? (
++            <CheckCircle2Icon className="size-4 shrink-0" />
++          ) : (
++            <AlertCircleIcon className="size-4 shrink-0" />
++          )}
++          <span>{toast.message}</span>
++        </div>
++      )}
++    </ScrollArea>
++  );
++}

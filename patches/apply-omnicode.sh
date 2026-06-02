@@ -1,14 +1,12 @@
 #!/usr/bin/env bash
 # apply-omnicode.sh — Apply OmniCode patches to a fresh T3 Code checkout
-# Usage: cd /path/to/t3code && bash /path/to/apply-omnicode.sh
+# Usage: cd /path/to/t3code && bash /path/to/patches/apply-omnicode.sh
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PATCH_DIR="$SCRIPT_DIR/patches"
 
-if [ ! -d "$PATCH_DIR" ]; then
-  echo "ERROR: patches/ directory not found next to this script"
-  echo "Expected at: $PATCH_DIR"
+if [ ! -d "$SCRIPT_DIR" ]; then
+  echo "ERROR: patches directory not found"
   exit 1
 fi
 
@@ -20,15 +18,14 @@ echo ""
 # Verify we're in a T3 Code checkout
 if [ ! -f "package.json" ] || ! grep -q "t3tools" package.json 2>/dev/null; then
   echo "WARNING: Not in a T3 Code checkout? (package.json missing t3tools)"
-  echo "Continuing anyway..."
 fi
 
 # Collect all numbered patches
-PATCH_FILES=$(find "$PATCH_DIR" -maxdepth 1 -name '[0-9][0-9][0-9][0-9]-*.patch' | sort)
+PATCH_FILES=$(find "$SCRIPT_DIR" -maxdepth 1 -name '[0-9][0-9][0-9][0-9]-*.patch' | sort)
 PATCH_COUNT=$(echo "$PATCH_FILES" | wc -l)
 
 if [ "$PATCH_COUNT" -eq 0 ]; then
-  echo "ERROR: No .patch files found in $PATCH_DIR"
+  echo "ERROR: No .patch files found"
   exit 1
 fi
 

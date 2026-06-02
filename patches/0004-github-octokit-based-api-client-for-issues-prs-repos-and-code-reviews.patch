@@ -1,11 +1,3 @@
-From b3e8c033 Mon Sep 17 00:00:00 2006
-From: *** Dev <dev@omnicode.dev>
-Date: Tue, 2 Jun 2026 00:00:00 +0000
-Subject: [PATCH 4/8] GitHub: Octokit-based API client for issues, PRs, repos, and code reviews
-
-Wrap Octokit as Effect Context.Services: GitHubClient (auth token/basic), IssuesService (list, create, get, update, search), PullRequestsService (list, get, create, merge), ReposService (search), ReviewsService (create, submit, list).
----
-
 diff --git a/packages/omnicode-github/src/GitHubClient.ts b/packages/omnicode-github/src/GitHubClient.ts
 new file mode 100644
 index 00000000..e4885984

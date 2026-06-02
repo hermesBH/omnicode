@@ -4,13 +4,17 @@ A universal code workspace extension for [T3 Code](https://github.com/pingdotgg/
 
 ## What is This?
 
-This is a **pack of 8 clean patches** that apply directly to the upstream T3 Code repository (commit `b3e8c033`). They add OmniCode without forking — you apply them to your own T3 Code checkout and get:
+This is a **pack of 15 clean patches** that apply directly to the upstream T3 Code repository (commit `b3e8c033`). Patches 1–8 add the OmniCode package infrastructure (GitHub browser, AI agents, plugin system). Patches 9–15 add deep VCS integration: git worktree creation from issues, auto-detect project remotes, and seamless chat/thread integration within T3 Code's UI.
+
+With all 15 patches you get:
 
 - **GitHub Browser** — search repos, browse issues, view PRs
 - **AI Agents** — code review agents that read PR diffs, issue triage agents that suggest labels
 - **Plugin System** — third-party extensions with hooks, manifest-declared contributions
 - **Multi-Git Support** — provider abstraction for GitHub, GitLab, etc.
-- **REST API** — 6 Effect-wired endpoints for status, plugins, agents, repos, issues
+- **VCS Integration** — auto-detect git remotes on project open, one-click worktree creation from issues
+- **AI-Ready Chat** — worktrees automatically open a new chat thread with full context
+- **REST API** — 8 Effect-wired endpoints for status, plugins, agents, repos, issues, worktrees, remote detection
 
 ## Quick Start
 
@@ -20,17 +24,19 @@ git clone https://github.com/pingdotgg/t3code.git
 cd t3code
 git checkout b3e8c033  # base commit
 
-# Apply OmniCode patches
-bash /path/to/patches/apply-omni-code.sh
+# Apply OmniCode patches (patch-package style)
+bash /path/to/patches/apply-omnicode.sh
 # or manually:
-git am patches/*.patch
+git apply patches/0001-*.patch  # etc.
 
 # Install and verify
 bun install
-npx tsgo check packages/omnicode-contracts/src/
+npx tsgo --noEmit
 ```
 
-## Patch Series
+## Patch Series (patch-package format)
+
+All patches are clean unified diffs in **patch-package style** — no git-am headers, plain `git apply` compatible. Named sequentially for ordered application.
 
 | # | Patch | Size | What it adds |
 |---|-------|------|-------------|
@@ -42,6 +48,13 @@ npx tsgo check packages/omnicode-contracts/src/
 | 6 | Server | 33 KB | Effect service layer, OmniCodeRouter (6 endpoints) |
 | 7 | Web UI | 67 KB | 5 route pages, sidebar nav, icon, animations |
 | 8 | Docs | 58 KB | SPEC.md architecture, README updates |
+| 9 | Server (VCS) | 1 KB | Wire VcsIntegrationService into OmniCode services |
+| 10 | Router (VCS) | 4 KB | Worktree creation + remote detection endpoints |
+| 11 | Core (VCS) | 20 KB | VcsIntegrationService (Effect TS + ChildProcessSpawner) |
+| 12 | Web (Hooks) | 16 KB | React hooks: project detection, issues, worktree flow |
+| 13 | Web (Issues) | 20 KB | Full Issues route page with chat integration |
+| 14 | Web (Nav) | 1 KB | Issues sidebar nav item |
+| 15 | Web (Redirect) | 1 KB | Default redirect to /omnicode/issues |
 
 ## New Packages
 
@@ -88,6 +101,13 @@ patches/
 ├── 0006-*.patch   → Server layer + REST API
 ├── 0007-*.patch   → Web UI routes & components
 ├── 0008-*.patch   → Documentation
+├── 0009-*.patch   → Server VCS wiring
+├── 0010-*.patch   → VCS REST endpoints
+├── 0011-*.patch   → VCS integration service
+├── 0012-*.patch   → React hooks (project, issues, worktree)
+├── 0013-*.patch   → Issues route page
+├── 0014-*.patch   → Sidebar nav item
+├── 0015-*.patch   → Default redirect
 ├── README.md      ← this file
 ├── apply-omnicode.sh  → automatic apply script
 └── gen-patches.sh     → patch regeneration script

@@ -1,11 +1,3 @@
-From b3e8c033 Mon Sep 17 00:00:00 2006
-From: *** Dev <dev@omnicode.dev>
-Date: Tue, 2 Jun 2026 00:00:00 +0000
-Subject: [PATCH 7/8] UI: OmniCode web pages with repo browser, issue tracker, agents, and plugin manager
-
-5 TanStack Router pages (layout, repos, issues, agents, plugins), OmniCodeIcon SVG, OmniCodeSidebarNav, sidebar integration, CSS animations (fade-in/slide-up/skeleton), ARIA labels, loading/empty/error states.
----
-
 diff --git a/apps/web/src/components/Sidebar.tsx b/apps/web/src/components/Sidebar.tsx
 index f3f163b0..d040b1c4 100644
 --- a/apps/web/src/components/Sidebar.tsx

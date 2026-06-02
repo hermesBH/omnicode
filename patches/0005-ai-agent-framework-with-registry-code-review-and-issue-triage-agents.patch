@@ -1,11 +1,3 @@
-From b3e8c033 Mon Sep 17 00:00:00 2006
-From: *** Dev <dev@omnicode.dev>
-Date: Tue, 2 Jun 2026 00:00:00 +0000
-Subject: [PATCH 5/8] AI: Agent framework with registry, code review, and issue triage agents
-
-Define Agent base class, AgentRegistry (register/dispatch/manage), CodeReviewAgent (analyzes PR diffs), IssueTriageAgent (suggests labels/assignees), RegistryError.
----
-
 diff --git a/packages/omnicode-ai/src/Agent.ts b/packages/omnicode-ai/src/Agent.ts
 new file mode 100644
 index 00000000..284cb727

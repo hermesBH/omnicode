@@ -48,6 +48,12 @@ import {
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import { ChildProcessSpawner } from "effect/unstable/process";
+import {
+  VcsIntegrationService,
+  VcsIntegrationLive,
+  type VcsIntegrationShape,
+} from "./omnicodeGitIntegration.ts";
 
 // =============================================================================
 // OmniCode Config Service
@@ -458,13 +464,16 @@ export const OmniCodeGitHubServicesLive: Layer.Layer<
 export const OmniCodeServicesLive: Layer.Layer<
   | OmniCodePluginRegistryService
   | OmniCodeAgentRegistryService
-  | typeof GitHubClient,
+  | typeof GitHubClient
+  | VcsIntegrationService,
   never,
-  OmniCodeServerConfig
+  | OmniCodeServerConfig
+  | typeof ChildProcessSpawner.ChildProcessSpawner
 > = Layer.mergeAll(
   OmniCodePluginRegistryLive,
   OmniCodeAgentRegistryLive,
   OmniCodeGitHubClientLive,
+  VcsIntegrationLive,
 );
 
 /**

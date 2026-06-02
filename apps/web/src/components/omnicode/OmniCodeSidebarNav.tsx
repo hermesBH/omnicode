@@ -5,6 +5,7 @@ import {
   BotIcon,
   PuzzleIcon,
   GitForkIcon,
+  CircleDotIcon,
 } from "lucide-react";
 import { useCanGoBack, useNavigate } from "@tanstack/react-router";
 
@@ -23,13 +24,15 @@ import { OmniCodeIcon } from "./OmniCodeIcon";
 export type OmniCodeSectionPath =
   | "/omnicode/repos"
   | "/omnicode/agents"
-  | "/omnicode/plugins";
+  | "/omnicode/plugins"
+  | "/omnicode/issues";
 
 export const OMNICODE_NAV_ITEMS: ReadonlyArray<{
   label: string;
   to: OmniCodeSectionPath;
   icon: ComponentType<{ className?: string }>;
 }> = [
+  { label: "Issues", to: "/omnicode/issues", icon: CircleDotIcon },
   { label: "Repositories", to: "/omnicode/repos", icon: BookIcon },
   { label: "Agents", to: "/omnicode/agents", icon: BotIcon },
   { label: "Plugins", to: "/omnicode/plugins", icon: PuzzleIcon },

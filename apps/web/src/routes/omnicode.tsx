@@ -92,7 +92,7 @@ export const Route = createFileRoute("/omnicode")({
     }
 
     if (location.pathname === "/omnicode") {
-      throw redirect({ to: "/omnicode/repos", replace: true });
+      throw redirect({ to: "/omnicode/issues", replace: true });
     }
   },
   component: OmniCodeRouteLayout,
