@@ -24,7 +24,10 @@
       "@typescript/native-preview": "7.0.0-dev.20260527.2",
       "tsdown": "^0.20.3",
       "typescript": "~6.0.3",
-      "vitest": "^4.0.0"
+      "vitest": "^4.0.0",
+      "@octokit/rest": "^21.1.1",
+      "@octokit/auth-token": "^5.1.2",
+      "marked": "^16.2.1"
     }
   },
   "type": "module",
