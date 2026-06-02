@@ -7,9 +7,9 @@ import {
   omnicodeRoutesLayer,
 } from "@t3tools/core/omnicode-router";
 import {
-  OmniCodeServicesLive,
   OmniCodeGitHubServicesLive,
   OmniCodeServerConfig,
+  OmniCodeServicesLive,
   type OmniCodeServerConfigShape,
 } from "@t3tools/core/omnicode";
 import {
@@ -434,6 +434,21 @@ export const makeServerLayer = Layer.unwrap(
       Layer.provideMerge(FetchHttpClient.layer),
       Layer.provideMerge(VcsProcess.layer),
       Layer.provideMerge(PlatformServicesLive),
+      Layer.provideMerge(
+        OmniCodeServicesLive.pipe(
+          Layer.provide(
+            Layer.sync(
+              OmniCodeServerConfig,
+              (): OmniCodeServerConfigShape => ({
+                enabled: true,
+                githubToken: process.env.GITHUB_TOKEN ?? process.env.GH_TOKEN ?? "",
+                pluginDirs: [],
+              }),
+            ),
+          ),
+        ),
+      ),
+      Layer.provideMerge(OmniCodeGitHubServicesLive),
     );
   }),
 );

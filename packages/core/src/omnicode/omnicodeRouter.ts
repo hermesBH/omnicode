@@ -496,7 +496,15 @@ const detectRemoteHandler = Effect.gen(function* () {
   }
 
   const result = yield* vcs.detectRemote({ cwd });
-  return HttpServerResponse.jsonUnsafe(result, { status: 200 });
+  // Unwrap Option types for JSON serialization — Effect Option serializes
+  // as {_tag:"Some",value:...} which the web client doesn't understand.
+  return HttpServerResponse.jsonUnsafe({
+    hasRemote: result.hasRemote,
+    remoteUrl: result.remoteUrl?._tag === "Some" ? result.remoteUrl.value : null,
+    owner: result.owner?._tag === "Some" ? result.owner.value : null,
+    repo: result.repo?._tag === "Some" ? result.repo.value : null,
+    provider: result.provider?._tag === "Some" ? result.provider.value : null,
+  }, { status: 200 });
 }).pipe(
   Effect.catchAll((error) =>
     Effect.succeed(
