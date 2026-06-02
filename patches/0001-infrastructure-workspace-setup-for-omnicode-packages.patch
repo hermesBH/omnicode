@@ -6,6 +6,21 @@ Subject: [PATCH 1/8] Infrastructure: Workspace setup for OmniCode packages
 Add 4 new packages (omnicode-contracts, omnicode-plugin, omnicode-github, omnicode-ai) to workspace config, tsconfig, package.jsons, and app deps.
 ---
 
+diff --git a/apps/server/package.json b/apps/server/package.json
+index fac1b924..fb9b20f2 100644
+--- a/apps/server/package.json
++++ b/apps/server/package.json
+@@ -28,6 +28,10 @@
+     "@effect/platform-node": "catalog:",
+     "@effect/platform-node-shared": "catalog:",
+     "@effect/sql-sqlite-bun": "catalog:",
++    "@omnicode/ai": "workspace:*",
++    "@omnicode/contracts": "workspace:*",
++    "@omnicode/github": "workspace:*",
++    "@omnicode/plugin": "workspace:*",
+     "@opencode-ai/sdk": "^1.3.15",
+     "@pierre/diffs": "catalog:",
+     "effect": "catalog:",
 diff --git a/packages/core/package.json b/packages/core/package.json
 new file mode 100644
 index 00000000..c781aa82
