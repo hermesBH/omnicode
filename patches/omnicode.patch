@@ -3033,18 +3033,10 @@ index 13516c77..86a3c268 100644
    }),
  );
 diff --git a/apps/web/src/components/BranchToolbar.tsx b/apps/web/src/components/BranchToolbar.tsx
-index 27c5c311..a0c35c01 100644
+index 27c5c311..c2b424c2 100644
 --- a/apps/web/src/components/BranchToolbar.tsx
 +++ b/apps/web/src/components/BranchToolbar.tsx
-@@ -2,6 +2,7 @@ import { scopeProjectRef, scopeThreadRef } from "@t3tools/client-runtime";
- import type { EnvironmentId, ThreadId } from "@t3tools/contracts";
- import {
-   ChevronDownIcon,
-+  MessageSquareIcon,
-   CloudIcon,
-   FolderGit2Icon,
-   FolderGitIcon,
-@@ -37,6 +38,8 @@ import {
+@@ -37,6 +37,8 @@ import {
    MenuTrigger,
  } from "./ui/menu";
  import { Separator } from "./ui/separator";
@@ -3053,7 +3045,7 @@ index 27c5c311..a0c35c01 100644
  
  interface BranchToolbarProps {
    environmentId: EnvironmentId;
-@@ -51,6 +54,8 @@ interface BranchToolbarProps {
+@@ -51,6 +53,8 @@ interface BranchToolbarProps {
    onComposerFocusRequest?: () => void;
    availableEnvironments?: readonly EnvironmentOption[];
    onEnvironmentChange?: (environmentId: EnvironmentId) => void;
@@ -3062,7 +3054,7 @@ index 27c5c311..a0c35c01 100644
  }
  
  interface MobileRunContextSelectorProps {
-@@ -202,6 +207,8 @@ export const BranchToolbar = memo(function BranchToolbar({
+@@ -202,6 +206,8 @@ export const BranchToolbar = memo(function BranchToolbar({
    onComposerFocusRequest,
    availableEnvironments,
    onEnvironmentChange,
@@ -3071,7 +3063,7 @@ index 27c5c311..a0c35c01 100644
  }: BranchToolbarProps) {
    const threadRef = useMemo(
      () => scopeThreadRef(environmentId, threadId),
-@@ -288,6 +295,27 @@ export const BranchToolbar = memo(function BranchToolbar({
+@@ -288,6 +294,27 @@ export const BranchToolbar = memo(function BranchToolbar({
          {...(onCheckoutPullRequestRequest ? { onCheckoutPullRequestRequest } : {})}
          {...(onComposerFocusRequest ? { onComposerFocusRequest } : {})}
        />
@@ -3087,7 +3079,7 @@ index 27c5c311..a0c35c01 100644
 +                variant="outline"
 +                size="xs"
 +              >
-+                <MessageSquareIcon className="size-3" />
++                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="size-3"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="2" fill="currentColor"/></svg>
 +              </Toggle>
 +            }
 +          />
@@ -3771,7 +3763,7 @@ index f3f163b0..d040b1c4 100644
          <>
            <SidebarProjectsContent
 diff --git a/apps/web/src/components/chat/ChatHeader.tsx b/apps/web/src/components/chat/ChatHeader.tsx
-index ac420317..dd1da2f4 100644
+index ac420317..f1864fdf 100644
 --- a/apps/web/src/components/chat/ChatHeader.tsx
 +++ b/apps/web/src/components/chat/ChatHeader.tsx
 @@ -9,7 +9,7 @@ import { scopeThreadRef } from "@t3tools/client-runtime";
@@ -3779,7 +3771,7 @@ index ac420317..dd1da2f4 100644
  import GitActionsControl from "../GitActionsControl";
  import { type DraftId } from "~/composerDraftStore";
 -import { DiffIcon, TerminalSquareIcon } from "lucide-react";
-+import { MessageSquareIcon, DiffIcon, TerminalSquareIcon } from "lucide-react";
++import {DiffIcon, TerminalSquareIcon } from "lucide-react";
  import { Badge } from "../ui/badge";
  import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
  import ProjectScriptsControl, { type NewProjectScriptInput } from "../ProjectScriptsControl";
@@ -3824,7 +3816,7 @@ index ac420317..dd1da2f4 100644
 +                variant="outline"
 +                size="xs"
 +              >
-+                <MessageSquareIcon className="size-3" />
++                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="size-3"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="2" fill="currentColor"/></svg>
 +              </Toggle>
 +            }
 +          />
@@ -3915,10 +3907,10 @@ index 00000000..bbd357ab
 +}
 diff --git a/apps/web/src/components/omnicode/OmniCodeSidebarNav.tsx b/apps/web/src/components/omnicode/OmniCodeSidebarNav.tsx
 new file mode 100644
-index 00000000..27c48988
+index 00000000..d31b09e8
 --- /dev/null
 +++ b/apps/web/src/components/omnicode/OmniCodeSidebarNav.tsx
-@@ -0,0 +1,126 @@
+@@ -0,0 +1,134 @@
 +import { useCallback, type ComponentType } from "react";
 +import {
 +  ArrowLeftIcon,
@@ -3926,7 +3918,6 @@ index 00000000..27c48988
 +  BotIcon,
 +  PuzzleIcon,
 +  GitForkIcon,
-+  MessageSquareIcon,
 +} from "lucide-react";
 +import { useCanGoBack, useNavigate } from "@tanstack/react-router";
 +
@@ -3948,12 +3939,21 @@ index 00000000..27c48988
 +  | "/omnicode/plugins"
 +  | "/omnicode/issues";
 +
++function IssuesCircleIcon({ className }: { className?: string }) {
++  return (
++    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={className} aria-hidden="true">
++      <circle cx="12" cy="12" r="10" />
++      <circle cx="12" cy="12" r="2" fill="currentColor" />
++    </svg>
++  );
++}
++
 +export const OMNICODE_NAV_ITEMS: ReadonlyArray<{
 +  label: string;
 +  to: OmniCodeSectionPath;
 +  icon: ComponentType<{ className?: string }>;
 +}> = [
-+  { label: "Issues", to: "/omnicode/issues", icon: MessageSquareIcon },
++  { label: "Issues", to: "/omnicode/issues", icon: IssuesCircleIcon },
 +  { label: "Repositories", to: "/omnicode/repos", icon: BookIcon },
 +  { label: "Agents", to: "/omnicode/agents", icon: BotIcon },
 +  { label: "Plugins", to: "/omnicode/plugins", icon: PuzzleIcon },
