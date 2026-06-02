@@ -3033,14 +3033,14 @@ index 13516c77..86a3c268 100644
    }),
  );
 diff --git a/apps/web/src/components/BranchToolbar.tsx b/apps/web/src/components/BranchToolbar.tsx
-index 27c5c311..0a067a85 100644
+index 27c5c311..a0c35c01 100644
 --- a/apps/web/src/components/BranchToolbar.tsx
 +++ b/apps/web/src/components/BranchToolbar.tsx
 @@ -2,6 +2,7 @@ import { scopeProjectRef, scopeThreadRef } from "@t3tools/client-runtime";
  import type { EnvironmentId, ThreadId } from "@t3tools/contracts";
  import {
    ChevronDownIcon,
-+  CircleDotIcon,
++  MessageSquareIcon,
    CloudIcon,
    FolderGit2Icon,
    FolderGitIcon,
@@ -3087,7 +3087,7 @@ index 27c5c311..0a067a85 100644
 +                variant="outline"
 +                size="xs"
 +              >
-+                <CircleDotIcon className="size-3" />
++                <MessageSquareIcon className="size-3" />
 +              </Toggle>
 +            }
 +          />
@@ -3771,7 +3771,7 @@ index f3f163b0..d040b1c4 100644
          <>
            <SidebarProjectsContent
 diff --git a/apps/web/src/components/chat/ChatHeader.tsx b/apps/web/src/components/chat/ChatHeader.tsx
-index ac420317..0f34c315 100644
+index ac420317..dd1da2f4 100644
 --- a/apps/web/src/components/chat/ChatHeader.tsx
 +++ b/apps/web/src/components/chat/ChatHeader.tsx
 @@ -9,7 +9,7 @@ import { scopeThreadRef } from "@t3tools/client-runtime";
@@ -3779,7 +3779,7 @@ index ac420317..0f34c315 100644
  import GitActionsControl from "../GitActionsControl";
  import { type DraftId } from "~/composerDraftStore";
 -import { DiffIcon, TerminalSquareIcon } from "lucide-react";
-+import { CircleDotIcon, DiffIcon, TerminalSquareIcon } from "lucide-react";
++import { MessageSquareIcon, DiffIcon, TerminalSquareIcon } from "lucide-react";
  import { Badge } from "../ui/badge";
  import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
  import ProjectScriptsControl, { type NewProjectScriptInput } from "../ProjectScriptsControl";
@@ -3824,7 +3824,7 @@ index ac420317..0f34c315 100644
 +                variant="outline"
 +                size="xs"
 +              >
-+                <CircleDotIcon className="size-3" />
++                <MessageSquareIcon className="size-3" />
 +              </Toggle>
 +            }
 +          />
@@ -3915,7 +3915,7 @@ index 00000000..bbd357ab
 +}
 diff --git a/apps/web/src/components/omnicode/OmniCodeSidebarNav.tsx b/apps/web/src/components/omnicode/OmniCodeSidebarNav.tsx
 new file mode 100644
-index 00000000..da66860e
+index 00000000..27c48988
 --- /dev/null
 +++ b/apps/web/src/components/omnicode/OmniCodeSidebarNav.tsx
 @@ -0,0 +1,126 @@
@@ -3926,7 +3926,7 @@ index 00000000..da66860e
 +  BotIcon,
 +  PuzzleIcon,
 +  GitForkIcon,
-+  CircleDotIcon,
++  MessageSquareIcon,
 +} from "lucide-react";
 +import { useCanGoBack, useNavigate } from "@tanstack/react-router";
 +
@@ -3953,7 +3953,7 @@ index 00000000..da66860e
 +  to: OmniCodeSectionPath;
 +  icon: ComponentType<{ className?: string }>;
 +}> = [
-+  { label: "Issues", to: "/omnicode/issues", icon: CircleDotIcon },
++  { label: "Issues", to: "/omnicode/issues", icon: MessageSquareIcon },
 +  { label: "Repositories", to: "/omnicode/repos", icon: BookIcon },
 +  { label: "Agents", to: "/omnicode/agents", icon: BotIcon },
 +  { label: "Plugins", to: "/omnicode/plugins", icon: PuzzleIcon },
