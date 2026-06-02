@@ -2,7 +2,6 @@ import { scopeProjectRef, scopeThreadRef } from "@t3tools/client-runtime";
 import type { EnvironmentId, ThreadId } from "@t3tools/contracts";
 import {
   ChevronDownIcon,
-  MessageSquareIcon,
   CloudIcon,
   FolderGit2Icon,
   FolderGitIcon,
@@ -307,7 +306,7 @@ export const BranchToolbar = memo(function BranchToolbar({
                 variant="outline"
                 size="xs"
               >
-                <MessageSquareIcon className="size-3" />
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="size-3"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="2" fill="currentColor"/></svg>
               </Toggle>
             }
           />
