@@ -9,7 +9,7 @@ import { scopeThreadRef } from "@t3tools/client-runtime";
 import { memo } from "react";
 import GitActionsControl from "../GitActionsControl";
 import { type DraftId } from "~/composerDraftStore";
-import { CircleDotIcon, DiffIcon, TerminalSquareIcon } from "lucide-react";
+import { MessageSquareIcon, DiffIcon, TerminalSquareIcon } from "lucide-react";
 import { Badge } from "../ui/badge";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import ProjectScriptsControl, { type NewProjectScriptInput } from "../ProjectScriptsControl";
@@ -203,7 +203,7 @@ export const ChatHeader = memo(function ChatHeader({
                 variant="outline"
                 size="xs"
               >
-                <CircleDotIcon className="size-3" />
+                <MessageSquareIcon className="size-3" />
               </Toggle>
             }
           />
