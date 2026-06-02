@@ -1,13 +1,16 @@
 /**
- * IssuesSidebar — Slide-out panel showing GitHub issues for the current repo.
+ * IssuesSidebar — Fully client-side GitHub issues sidebar.
  *
- * Follows the DiffPanel / DiffPanelShell pattern: renders as a border-left
- * sidebar that can be toggled from the ChatHeader toolbar.
+ * Detects the repo from T3 Code's existing VCS status store (no server API
+ * needed), fetches issues directly from the GitHub REST API (CORS-enabled),
+ * and renders clickable issue cards with labels, author, and timestamps.
  *
- * Auto-detects the current project's git remote and fetches open issues
- * via the OmniCode server API.
+ * Uses DiffPanelShell for the right-side panel layout, matching the DiffPanel
+ * pattern exactly.  Handles loading, error, empty, and no-repo states.
  */
 
+import type { EnvironmentId } from "@t3tools/contracts";
+import { scopeProjectRef } from "@t3tools/client-runtime";
 import {
   AlertTriangleIcon,
   BugIcon,
@@ -34,6 +37,8 @@ import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Skeleton } from "./ui/skeleton";
 import { cn } from "~/lib/utils";
+import { useVcsStatus } from "~/lib/vcsStatusState";
+import { createProjectSelectorByRef, useStore } from "~/store";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -52,46 +57,98 @@ export interface GitHubIssue {
   readonly body?: string;
 }
 
-export interface IssuesSidebarData {
-  readonly owner: string;
-  readonly repo: string;
-  readonly issues: GitHubIssue[];
-  readonly loading: boolean;
-  readonly error: string | null;
-  readonly refreshedAt: string | null;
+// ---------------------------------------------------------------------------
+// Git remote URL parser (SSH and HTTPS)
+// ---------------------------------------------------------------------------
+
+function parseGitRemote(url: string): { owner: string; repo: string } | null {
+  if (!url) return null;
+  // SSH: git@github.com:owner/repo.git
+  const ssh = url.match(/github\.com[:/]([^/]+)\/([^/.]+?)(?:\.git)?$/);
+  if (ssh) return { owner: ssh[1], repo: ssh[2] };
+  // HTTPS: https://github.com/owner/repo.git
+  const https = url.match(/github\.com\/([^/]+)\/([^/.]+?)(?:\.git)?$/);
+  if (https) return { owner: https[1], repo: https[2] };
+  return null;
 }
 
 // ---------------------------------------------------------------------------
-// Filter options
+// GitHub API helpers (client-side, CORS-enabled)
 // ---------------------------------------------------------------------------
 
-type IssueFilter = "all" | "open" | "closed";
-type IssueType = "all" | "bug" | "feature" | "other";
+const GITHUB_API = "https://api.github.com";
 
-const ISSUE_LABEL_FILTERS: Record<IssueType, (labels: ReadonlyArray<{ name: string }>) => boolean> = {
+async function fetchIssuesFromGitHub(
+  owner: string,
+  repo: string,
+  state: "open" | "closed" | "all" = "open",
+  signal?: AbortSignal,
+): Promise<GitHubIssue[]> {
+  const url = `${GITHUB_API}/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/issues?state=${state}&per_page=50&sort=updated&direction=desc`;
+  const resp = await fetch(url, {
+    headers: {
+      Accept: "application/vnd.github.v3+json",
+      "User-Agent": "OmniCode-T3Code",
+    },
+    signal,
+  });
+  if (!resp.ok) {
+    if (resp.status === 404) throw new Error("Repository not found or private");
+    if (resp.status === 403) throw new Error("Rate limited — try again later");
+    throw new Error(`GitHub API error: ${resp.status} ${resp.statusText}`);
+  }
+  const data: Record<string, unknown>[] = await resp.json();
+  return data
+    .filter((item) => !item.pull_request) // exclude PRs from issue list
+    .map((item) => ({
+      number: item.number as number,
+      title: item.title as string,
+      state: (item.state as "open" | "closed") ?? "open",
+      htmlUrl: (item.html_url as string) ?? "",
+      labels: ((item.labels as Record<string, unknown>[]) ?? []).map((l) => ({
+        name: String(l.name ?? ""),
+        color: String(l.color ?? "ccc"),
+      })),
+      createdAt: (item.created_at as string) ?? "",
+      updatedAt: (item.updated_at as string) ?? "",
+      author: ((item.user as Record<string, unknown>)?.login as string) ?? "unknown",
+      commentsCount: (item.comments as number) ?? 0,
+      body: (item.body as string) ?? undefined,
+    }));
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+const ISSUE_FILTERS: Record<string, (l: ReadonlyArray<{ name: string }>) => boolean> = {
   all: () => true,
   bug: (labels) => labels.some((l) => /bug/i.test(l.name)),
   feature: (labels) => labels.some((l) => /feature|enhancement|feat/i.test(l.name)),
   other: (labels) => !labels.some((l) => /bug|feature|enhancement|feat/i.test(l.name)),
 };
 
-// ---------------------------------------------------------------------------
-// Helper: determine issue type icon
-// ---------------------------------------------------------------------------
-
 function getIssueIcon(labels: ReadonlyArray<{ name: string }>): ReactNode {
-  const labelNames = labels.map((l) => l.name.toLowerCase());
-  if (labelNames.some((n) => /bug/i.test(n))) {
-    return <BugIcon className="size-3.5 shrink-0 text-red-500" />;
-  }
-  if (labelNames.some((n) => /feature|enhancement|feat/i.test(n))) {
-    return <LightbulbIcon className="size-3.5 shrink-0 text-amber-500" />;
-  }
+  const n = labels.map((l) => l.name.toLowerCase());
+  if (n.some((x) => /bug/i.test(x))) return <BugIcon className="size-3.5 shrink-0 text-red-500" />;
+  if (n.some((x) => /feature|enhancement/i.test(x))) return <LightbulbIcon className="size-3.5 shrink-0 text-amber-500" />;
   return <AlertTriangleIcon className="size-3.5 shrink-0 text-muted-foreground" />;
 }
 
+function formatRelativeTime(iso: string): string {
+  const diff = Date.now() - new Date(iso).getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  if (days < 30) return `${days}d ago`;
+  return new Date(iso).toLocaleDateString();
+}
+
 // ---------------------------------------------------------------------------
-// IssuesSidebar component
+// IssuesSidebar
 // ---------------------------------------------------------------------------
 
 interface IssuesSidebarProps {
@@ -103,61 +160,54 @@ interface IssuesSidebarProps {
 export default function IssuesSidebar({
   mode = "inline",
   cwd,
-  environmentId: _environmentId,
+  environmentId,
 }: IssuesSidebarProps) {
-  const [data, setData] = useState<IssuesSidebarData>({
-    owner: "",
-    repo: "",
-    issues: [],
-    loading: false,
-    error: null,
-    refreshedAt: null,
+  // Derive the project ref from cwd + environmentId so we can read VCS status
+  const project = useStore(
+    useMemo(() => {
+      if (!environmentId || !cwd) return undefined;
+      // We match projects by environment + cwd prefix
+      return (state: Record<string, unknown>) => {
+        // Use the fact that selectProjectsAcrossEnvironments gives us projects
+        const projects = (state as any)._projectsByEnvironment?.[environmentId];
+        if (!projects) return undefined;
+        return Object.values(projects).find(
+          (p: any) => p.cwd === cwd || cwd.startsWith(p.cwd),
+        );
+      };
+    }, [environmentId, cwd]),
+  );
+
+  const gitStatusQuery = useVcsStatus({
+    environmentId: environmentId ?? "",
+    cwd,
   });
-  const [filter, setFilter] = useState<IssueFilter>("open");
-  const [typeFilter, setTypeFilter] = useState<IssueType>("all");
+
+  const [data, setData] = useState<{
+    owner: string;
+    repo: string;
+    issues: GitHubIssue[];
+    loading: boolean;
+    error: string | null;
+    refreshedAt: string | null;
+  }>({ owner: "", repo: "", issues: [], loading: false, error: null, refreshedAt: null });
+
+  const [filter, setFilter] = useState<"open" | "closed" | "all">("open");
+  const [typeFilter, setTypeFilter] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState("");
-  const [repoInfo, setRepoInfo] = useState<{ owner: string; repo: string } | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
-  // Step 1: detect repo from cwd
-  const detectRepo = useCallback(async () => {
-    if (!cwd) return;
-    try {
-      const resp = await fetch(
-        `/api/omnicode/projects/detect-remote?cwd=${encodeURIComponent(cwd)}`,
-      );
-      if (!resp.ok) return;
-      const body = await resp.json();
-      if (!body.hasRemote || !body.remoteUrl) {
-        setData((prev) => ({ ...prev, error: "No git remote detected for this project." }));
-        return;
-      }
-      // Parse remote URL: git@github.com:owner/repo.git or https://github.com/owner/repo
-      const urlStr: string = body.remoteUrl;
-      let owner = "";
-      let repo = "";
-      const sshMatch = urlStr.match(/github\.com[:/]([^/]+)\/([^/.]+)(?:\.git)?$/);
-      const httpsMatch = urlStr.match(/github\.com\/([^/]+)\/([^/.]+)(?:\.git)?$/);
-      const match = sshMatch || httpsMatch;
-      if (match) {
-        owner = match[1];
-        repo = match[2];
-      }
-      if (owner && repo) {
-        setRepoInfo({ owner, repo });
-      } else {
-        setData((prev) => ({ ...prev, error: `Could not parse remote URL: ${urlStr}` }));
-      }
-    } catch {
-      setData((prev) => ({ ...prev, error: "Failed to detect repo remote." }));
-    }
-  }, [cwd]);
+  // Derive owner/repo from VCS status remote URL
+  const repoInfo = useMemo(() => {
+    const remoteUrl = gitStatusQuery.data?.remotes?.[0]?.url;
+    if (!remoteUrl) return null;
+    return parseGitRemote(remoteUrl);
+  }, [gitStatusQuery.data]);
 
-  // Step 2: fetch issues once repo is known
+  // Fetch issues when repo info changes
   const fetchIssues = useCallback(async () => {
     if (!repoInfo) return;
 
-    // Abort any in-flight request
     abortRef.current?.abort();
     const controller = new AbortController();
     abortRef.current = controller;
@@ -165,38 +215,13 @@ export default function IssuesSidebar({
     setData((prev) => ({ ...prev, loading: true, error: null }));
 
     try {
-      const resp = await fetch(
-        `/api/omnicode/issues?owner=${encodeURIComponent(repoInfo.owner)}&repo=${encodeURIComponent(repoInfo.repo)}&state=all&perPage=50`,
-        { signal: controller.signal },
+      const issues = await fetchIssuesFromGitHub(
+        repoInfo.owner,
+        repoInfo.repo,
+        "all",
+        controller.signal,
       );
-
-      if (!resp.ok) {
-        setData((prev) => ({
-          ...prev,
-          loading: false,
-          error: `API error: ${resp.status} ${resp.statusText}`,
-        }));
-        return;
-      }
-
-      const rawIssues: unknown[] = await resp.json();
-      const issues: GitHubIssue[] = rawIssues.map((issue: Record<string, unknown>) => ({
-        number: issue.number as number,
-        title: issue.title as string,
-        state: issue.state as "open" | "closed",
-        htmlUrl: issue.htmlUrl as string ?? (issue.html_url as string) ?? "",
-        labels: Array.isArray(issue.labels)
-          ? issue.labels.map((l: Record<string, unknown>) => ({
-              name: String(l.name ?? ""),
-              color: String(l.color ?? "ccc"),
-            }))
-          : [],
-        createdAt: issue.createdAt as string ?? (issue.created_at as string) ?? "",
-        updatedAt: issue.updatedAt as string ?? (issue.updated_at as string) ?? "",
-        author: issue.author as string ?? (issue.user?.login as string) ?? "unknown",
-        commentsCount: (issue.commentsCount ?? issue.comments ?? 0) as number,
-        body: issue.body as string ?? undefined,
-      }));
+      if (controller.signal.aborted) return;
 
       setData({
         owner: repoInfo.owner,
@@ -216,45 +241,21 @@ export default function IssuesSidebar({
     }
   }, [repoInfo]);
 
-  // Detect repo when cwd changes
+  // Fetch on mount and when repo changes
   useEffect(() => {
-    setRepoInfo(null);
-    setData({
-      owner: "",
-      repo: "",
-      issues: [],
-      loading: false,
-      error: null,
-      refreshedAt: null,
-    });
-    void detectRepo();
-  }, [detectRepo, cwd]);
+    setData({ owner: "", repo: "", issues: [], loading: false, error: null, refreshedAt: null });
+    if (repoInfo) void fetchIssues();
+    return () => abortRef.current?.abort();
+  }, [repoInfo, fetchIssues]);
 
-  // Fetch issues when repo is detected
-  useEffect(() => {
-    void fetchIssues();
-    return () => {
-      abortRef.current?.abort();
-    };
-  }, [fetchIssues]);
-
-  // Derived state
+  // Derived: filtered issues
   const filteredIssues = useMemo(() => {
     let result = data.issues;
+    if (filter === "open") result = result.filter((i) => i.state === "open");
+    else if (filter === "closed") result = result.filter((i) => i.state === "closed");
 
-    // State filter
-    if (filter === "open") {
-      result = result.filter((i) => i.state === "open");
-    } else if (filter === "closed") {
-      result = result.filter((i) => i.state === "closed");
-    }
+    if (typeFilter !== "all") result = result.filter((i) => ISSUE_FILTERS[typeFilter]?.(i.labels) ?? true);
 
-    // Type filter
-    if (typeFilter !== "all") {
-      result = result.filter((i) => ISSUE_LABEL_FILTERS[typeFilter](i.labels));
-    }
-
-    // Text search
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
       result = result.filter(
@@ -264,7 +265,6 @@ export default function IssuesSidebar({
           i.author.toLowerCase().includes(q),
       );
     }
-
     return result;
   }, [data.issues, filter, typeFilter, searchQuery]);
 
@@ -326,10 +326,10 @@ export default function IssuesSidebar({
         {/* Filter toolbar */}
         {data.issues.length > 0 && (
           <div className="flex flex-col gap-1.5 border-b border-border px-3 py-2">
-            {/* State pills */}
             <div className="flex items-center gap-1">
               {(["open", "closed", "all"] as const).map((f) => {
-                const count = f === "open" ? openCount : f === "closed" ? closedCount : data.issues.length;
+                const count =
+                  f === "open" ? openCount : f === "closed" ? closedCount : data.issues.length;
                 return (
                   <button
                     key={f}
@@ -349,7 +349,6 @@ export default function IssuesSidebar({
                 );
               })}
             </div>
-            {/* Type chips */}
             <div className="flex items-center gap-1">
               {(["all", "bug", "feature"] as const).map((t) => (
                 <button
@@ -367,7 +366,6 @@ export default function IssuesSidebar({
                 </button>
               ))}
             </div>
-            {/* Search */}
             <div className="relative">
               <SearchIcon className="pointer-events-none absolute left-2 top-1/2 size-3 -translate-y-1/2 text-muted-foreground/50" />
               <Input
@@ -382,7 +380,7 @@ export default function IssuesSidebar({
 
         {/* Issue list */}
         <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
-          {/* Loading skeleton */}
+          {/* Loading */}
           {data.loading && data.issues.length === 0 && (
             <div className="flex flex-col gap-2 p-3">
               {Array.from({ length: 5 }).map((_, i) => (
@@ -398,51 +396,47 @@ export default function IssuesSidebar({
             </div>
           )}
 
-          {/* Error state */}
+          {/* Error */}
           {data.error && !data.loading && (
             <div className="flex flex-col items-center justify-center gap-2 p-6 text-center">
               <TriangleAlertIcon className="size-8 text-amber-500" />
               <p className="text-xs text-muted-foreground">{data.error}</p>
               {cwd && (
-                <Button variant="outline" size="xs" onClick={detectRepo}>
-                  Retry detection
+                <Button variant="outline" size="xs" onClick={fetchIssues}>
+                  Retry
                 </Button>
               )}
             </div>
           )}
 
-          {/* Empty state */}
+          {/* Empty (filtered) */}
           {!data.loading && !data.error && filteredIssues.length === 0 && data.issues.length > 0 && (
             <div className="flex flex-col items-center justify-center gap-2 p-6 text-center">
               <SearchIcon className="size-6 text-muted-foreground/40" />
-              <p className="text-xs text-muted-foreground">
-                No issues match your filters.
-              </p>
+              <p className="text-xs text-muted-foreground">No issues match your filters.</p>
             </div>
           )}
 
-          {/* No issues state */}
+          {/* Empty (no issues) */}
           {!data.loading && !data.error && data.issues.length === 0 && repoInfo && (
             <div className="flex flex-col items-center justify-center gap-2 p-6 text-center">
               <CheckCircle2Icon className="size-8 text-green-500" />
-              <p className="text-xs text-muted-foreground">
-                No open issues!
-              </p>
+              <p className="text-xs text-muted-foreground">No issues found!</p>
               <p className="text-[10px] text-muted-foreground/60">
                 All clear in <span className="font-medium">{repoInfo.owner}/{repoInfo.repo}</span>
               </p>
             </div>
           )}
 
-          {/* No repo state */}
+          {/* No repo */}
           {!data.loading && !data.error && data.issues.length === 0 && !repoInfo && cwd && (
             <div className="flex flex-col items-center justify-center gap-2 p-6 text-center">
               <GitPullRequestIcon className="size-8 text-muted-foreground/30" />
               <p className="text-xs text-muted-foreground">
-                No GitHub repo detected for this project.
+                No GitHub repo detected.
               </p>
               <p className="text-[10px] text-muted-foreground/60">
-                Issues sidebar requires a GitHub remote URL.
+                Requires a GitHub remote URL in the project's git config.
               </p>
             </div>
           )}
@@ -496,9 +490,7 @@ export default function IssuesSidebar({
                 </div>
               </div>
               <div className="flex items-center gap-2 pl-[22px]">
-                <span className="text-[9px] text-muted-foreground/50">
-                  {issue.author}
-                </span>
+                <span className="text-[9px] text-muted-foreground/50">{issue.author}</span>
                 <span className="text-[9px] text-muted-foreground/40">·</span>
                 <span className="text-[9px] text-muted-foreground/50">
                   {formatRelativeTime(issue.updatedAt)}
@@ -518,23 +510,4 @@ export default function IssuesSidebar({
       </div>
     </DiffPanelShell>
   );
-}
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-function formatRelativeTime(isoString: string): string {
-  const date = new Date(isoString);
-  const now = Date.now();
-  const diffMs = now - date.getTime();
-  const diffMin = Math.floor(diffMs / 60000);
-  const diffHour = Math.floor(diffMs / 3600000);
-  const diffDay = Math.floor(diffMs / 86400000);
-
-  if (diffMin < 1) return "just now";
-  if (diffMin < 60) return `${diffMin}m ago`;
-  if (diffHour < 24) return `${diffHour}h ago`;
-  if (diffDay < 7) return `${diffDay}d ago`;
-  return date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
