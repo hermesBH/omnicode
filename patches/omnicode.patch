@@ -1827,7 +1827,7 @@ index 00000000..ee5f4c89
 +);
 diff --git a/apps/server/src/omnicode/omnicodeRouter.ts b/apps/server/src/omnicode/omnicodeRouter.ts
 new file mode 100644
-index 00000000..7d190998
+index 00000000..276a6b3f
 --- /dev/null
 +++ b/apps/server/src/omnicode/omnicodeRouter.ts
 @@ -0,0 +1,635 @@
@@ -2433,7 +2433,7 @@ index 00000000..7d190998
 + * Wire this into server.ts's `makeRoutesLayer`:
 + *
 + * ```ts
-+ * import { omnicodeRoutesLayer } from "./omnicodeRouter";
++ * import { omnicodeRoutesLayer } from "./omnicodeRouter.ts";
 + *
 + * const makeRoutesLayer = Layer.mergeAll(
 + *   ...existingRoutes,
@@ -2982,7 +2982,7 @@ index 00000000..558289a8
 +  );
 +};
 diff --git a/apps/server/src/server.ts b/apps/server/src/server.ts
-index 13516c77..f4d20024 100644
+index 13516c77..86a3c268 100644
 --- a/apps/server/src/server.ts
 +++ b/apps/server/src/server.ts
 @@ -3,6 +3,15 @@ import * as Layer from "effect/Layer";
@@ -2991,13 +2991,13 @@ index 13516c77..f4d20024 100644
  import { ServerConfig } from "./config.ts";
 +import {
 +  omnicodeRoutesLayer,
-+} from "./omnicode/omnicodeRouter";
++} from "./omnicode/omnicodeRouter.ts";
 +import {
 +  OmniCodeGitHubServicesLive,
 +  OmniCodeServerConfig,
 +  OmniCodeServicesLive,
 +  type OmniCodeServerConfigShape,
-+} from "./omnicode/omnicodeServer";
++} from "./omnicode/omnicodeServer.ts";
  import {
    attachmentsRouteLayer,
    otlpTracesProxyRouteLayer,
