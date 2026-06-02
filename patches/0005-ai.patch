@@ -1,0 +1,1087 @@
+diff --git a/packages/omnicode-ai/src/Agent.ts b/packages/omnicode-ai/src/Agent.ts
+new file mode 100644
+index 00000000..284cb727
+--- /dev/null
++++ b/packages/omnicode-ai/src/Agent.ts
+@@ -0,0 +1,149 @@
++/**
++ * Abstract base Agent class.
++ *
++ * Provides the standard lifecycle: initialize → run → complete → cleanup.
++ * All agents in the @omnicode/ai framework extend this class and implement
++ * the abstract `execute()` method.
++ */
++
++import type {
++  AgentDescriptor,
++  AgentLifecycle,
++  AgentResult,
++  AgentType,
++} from "./types.ts";
++
++// ---------------------------------------------------------------------------
++// Configuration
++// ---------------------------------------------------------------------------
++
++export interface AgentConfig {
++  readonly type: AgentType;
++  readonly name: string;
++  readonly description: string;
++  readonly version: string;
++  /** Arbitrary per-agent options (merged with defaults at construction). */
++  readonly options?: Record<string, unknown>;
++}
++
++// ---------------------------------------------------------------------------
++// Agent
++// ---------------------------------------------------------------------------
++
++export abstract class Agent<TInput = unknown, TOutput = unknown> {
++  // ── Descriptor ──────────────────────────────────────────────────────────
++  readonly type: AgentType;
++  readonly name: string;
++  readonly description: string;
++  readonly version: string;
++  readonly options: Readonly<Record<string, unknown>>;
++
++  // ── Lifecycle state ─────────────────────────────────────────────────────
++  protected lifecycle: AgentLifecycle = "idle";
++  protected startTime = 0;
++
++  constructor(config: AgentConfig) {
++    this.type = config.type;
++    this.name = config.name;
++    this.description = config.description;
++    this.version = config.version;
++    this.options = Object.freeze({ ...(config.options ?? {}) });
++  }
++
++  // ── Public API ──────────────────────────────────────────────────────────
++
++  /** Return the agent's descriptor (metadata). */
++  describe(): AgentDescriptor {
++    return {
++      type: this.type,
++      name: this.name,
++      description: this.description,
++      version: this.version,
++    };
++  }
++
++  /** Current lifecycle phase. */
++  get status(): AgentLifecycle {
++    return this.lifecycle;
++  }
++
++  /**
++   * Run the agent end-to-end: initialize, execute, complete, cleanup.
++   *
++   * @returns An `AgentResult` wrapping the output or error.
++   */
++  async run(input: TInput): Promise<AgentResult<TOutput>> {
++    this.startTime = performance.now();
++
++    try {
++      this.lifecycle = "initializing";
++      await this.initialize(input);
++
++      this.lifecycle = "running";
++      const output = await this.execute(input);
++
++      this.lifecycle = "completed";
++      await this.complete(output);
++
++      return this.result(output, true);
++    } catch (error) {
++      this.lifecycle = "failed";
++
++      const message =
++        error instanceof Error ? error.message : String(error);
++
++      return this.result(undefined as unknown as TOutput, false, message);
++    } finally {
++      this.lifecycle = "cleanedUp";
++      await this.cleanup();
++    }
++  }
++
++  // ── Lifecycle hooks (override in subclasses) ────────────────────────────
++
++  /**
++   * Prepare the agent for execution (load models, validate config, etc.).
++   * Called once before `execute()`.
++   */
++  // eslint-disable-next-line @typescript-eslint/no-unused-vars
++  protected async initialize(_input: TInput): Promise<void> {
++    // default: no-op
++  }
++
++  /**
++   * Core logic – every agent must implement this.
++   */
++  protected abstract execute(input: TInput): Promise<TOutput>;
++
++  /**
++   * Called after a successful execution (logging, notifications, etc.).
++   */
++  // eslint-disable-next-line @typescript-eslint/no-unused-vars
++  protected async complete(_output: TOutput): Promise<void> {
++    // default: no-op
++  }
++
++  /**
++   * Tear down resources (close connections, free memory).
++   * Always called, even when execution fails.
++   */
++  protected async cleanup(): Promise<void> {
++    // default: no-op
++  }
++
++  // ── Internals ───────────────────────────────────────────────────────────
++
++  private result(
++    output: TOutput,
++    success: boolean,
++    error?: string,
++  ): AgentResult<TOutput> {
++    return {
++      agent: this.type,
++      success,
++      output,
++      durationMs: Math.round(performance.now() - this.startTime),
++      ...(error !== undefined ? { error } : {}),
++    };
++  }
++}
+diff --git a/packages/omnicode-ai/src/AgentRegistry.ts b/packages/omnicode-ai/src/AgentRegistry.ts
+new file mode 100644
+index 00000000..b83e221d
+--- /dev/null
++++ b/packages/omnicode-ai/src/AgentRegistry.ts
+@@ -0,0 +1,156 @@
++/**
++ * AgentRegistry – holds agents and dispatches to the correct one by type.
++ *
++ * Agents are registered by their `type` string and looked up dynamically
++ * so that callers (webhook handlers, CLI commands, etc.) never need to
++ * import specific agent classes directly.
++ */
++
++import type { AgentType, AgentResult } from "./types.ts";
++import { Agent } from "./Agent.ts";
++
++// ---------------------------------------------------------------------------
++// Errors
++// ---------------------------------------------------------------------------
++
++export class RegistryError extends Error {
++  readonly code: "DUPLICATE" | "NOT_FOUND" | "EXECUTION_FAILED";
++
++  constructor(
++    message: string,
++    code: "DUPLICATE" | "NOT_FOUND" | "EXECUTION_FAILED",
++  ) {
++    super(message);
++    this.name = "RegistryError";
++    this.code = code;
++  }
++}
++
++// ---------------------------------------------------------------------------
++// Registry
++// ---------------------------------------------------------------------------
++
++export class AgentRegistry {
++  /** Registered agents keyed by type. */
++  private readonly agents = new Map<AgentType, Agent<unknown, unknown>>();
++
++  // ── Registration ────────────────────────────────────────────────────────
++
++  /**
++   * Register an agent with the registry.
++   *
++   * @throws {RegistryError} if an agent with the same type is already
++   *   registered (use `registerOrReplace` to override).
++   */
++  register<TInput, TOutput>(agent: Agent<TInput, TOutput>): this {
++    if (this.agents.has(agent.type)) {
++      throw new RegistryError(
++        `Agent "${agent.type}" is already registered`,
++        "DUPLICATE",
++      );
++    }
++    this.agents.set(agent.type, agent as Agent<unknown, unknown>);
++    return this;
++  }
++
++  /**
++   * Register or replace an agent by type.
++   */
++  registerOrReplace<TInput, TOutput>(agent: Agent<TInput, TOutput>): this {
++    this.agents.set(agent.type, agent as Agent<unknown, unknown>);
++    return this;
++  }
++
++  /**
++   * Remove a previously registered agent.
++   *
++   * @returns `true` if the agent existed and was removed.
++   */
++  unregister(type: AgentType): boolean {
++    return this.agents.delete(type);
++  }
++
++  // ── Lookup ──────────────────────────────────────────────────────────────
++
++  /**
++   * Retrieve a registered agent by type.
++   */
++  get<TInput = unknown, TOutput = unknown>(
++    type: AgentType,
++  ): Agent<TInput, TOutput> | undefined {
++    return this.agents.get(type) as Agent<TInput, TOutput> | undefined;
++  }
++
++  /**
++   * Assert that an agent is registered and throw if not.
++   */
++  require<TInput = unknown, TOutput = unknown>(
++    type: AgentType,
++  ): Agent<TInput, TOutput> {
++    const agent = this.get<TInput, TOutput>(type);
++    if (!agent) {
++      throw new RegistryError(
++        `Agent "${type}" is not registered`,
++        "NOT_FOUND",
++      );
++    }
++    return agent;
++  }
++
++  // ── Dispatch ────────────────────────────────────────────────────────────
++
++  /**
++   * Look up an agent by type and run it.
++   *
++   * This is the primary dispatch mechanism — webhook handlers and other
++   * callers use this instead of calling `agent.run()` directly.
++   *
++   * @returns The agent's result.
++   */
++  async dispatch<TInput, TOutput>(
++    type: AgentType,
++    input: TInput,
++  ): Promise<AgentResult<TOutput>> {
++    const agent = this.require<unknown, TOutput>(type);
++    try {
++      return await agent.run(input as unknown) as AgentResult<TOutput>;
++    } catch (error) {
++      const message =
++        error instanceof Error ? error.message : String(error);
++      throw new RegistryError(
++        `Agent "${type}" execution failed: ${message}`,
++        "EXECUTION_FAILED",
++      );
++    }
++  }
++
++  // ── Introspection ───────────────────────────────────────────────────────
++
++  /**
++   * List all registered agent types.
++   */
++  listTypes(): ReadonlyArray<AgentType> {
++    return [...this.agents.keys()];
++  }
++
++  /**
++   * List all registered agents with their descriptors.
++   */
++  listAgents(): ReadonlyArray<{ type: AgentType; name: string; description: string; version: string }> {
++    return [...this.agents.values()].map((a) => a.describe());
++  }
++
++  /**
++   * Number of registered agents.
++   */
++  get size(): number {
++    return this.agents.size;
++  }
++
++  /**
++   * Remove all agents from the registry.
++   */
++  clear(): void {
++    this.agents.clear();
++  }
++}
+diff --git a/packages/omnicode-ai/src/index.ts b/packages/omnicode-ai/src/index.ts
+new file mode 100644
+index 00000000..bd771343
+--- /dev/null
++++ b/packages/omnicode-ai/src/index.ts
+@@ -0,0 +1,46 @@
++/**
++ * @omnicode/ai – AI agent framework for code review and issue triage.
++ *
++ * Provides base agent classes, a registry, and concrete agent implementations
++ * for code-review analysis and issue triage automation.
++ *
++ * ## Usage
++ *
++ * ```ts
++ * import { AgentRegistry } from "@omnicode/ai";
++ * import { CodeReviewAgent } from "@omnicode/ai/review";
++ * import { IssueTriageAgent } from "@omnicode/ai/triage";
++ *
++ * const registry = new AgentRegistry();
++ * registry.register(new CodeReviewAgent());
++ * registry.register(new IssueTriageAgent());
++ *
++ * const result = await registry.dispatch("code-review", reviewContext);
++ * ```
++ *
++ * @module
++ */
++
++// Core framework
++export { Agent } from "./Agent.ts";
++export type { AgentConfig } from "./Agent.ts";
++export { AgentRegistry, RegistryError } from "./AgentRegistry.ts";
++
++// Shared types
++export type {
++  AgentDescriptor,
++  AgentLifecycle,
++  AgentResult,
++  AgentType,
++  Version,
++  ReviewSeverity,
++  FileChange,
++  ReviewComment,
++  ReviewContext,
++  ReviewOutput,
++  ExistingComment,
++  IssueType,
++  Priority,
++  TriageContext,
++  TriageOutput,
++} from "./types.ts";
+diff --git a/packages/omnicode-ai/src/review/CodeReviewAgent.ts b/packages/omnicode-ai/src/review/CodeReviewAgent.ts
+new file mode 100644
+index 00000000..6f86a4e0
+--- /dev/null
++++ b/packages/omnicode-ai/src/review/CodeReviewAgent.ts
+@@ -0,0 +1,262 @@
++/**
++ * CodeReviewAgent – analyzes PR diffs and posts structured review comments.
++ *
++ * The agent inspects file diffs for common issue patterns (debug artifacts,
++ * anti-patterns, security concerns, performance pitfalls, style violations)
++ * and produces a structured ReviewOutput with comments grouped by severity.
++ *
++ * This is a reference implementation. Production agents would integrate
++ * with language-specific AST parsers or LLM-based analysis.
++ */
++
++import { Agent, type AgentConfig } from "../Agent.ts";
++import type {
++  FileChange,
++  ReviewComment,
++  ReviewContext,
++  ReviewOutput,
++  ReviewSeverity,
++} from "../types.ts";
++
++// ---------------------------------------------------------------------------
++// Default config
++// ---------------------------------------------------------------------------
++
++const DEFAULT_CONFIG: AgentConfig = {
++  type: "code-review",
++  name: "Code Review Agent",
++  description: "Analyzes pull-request diffs and generates structured review comments",
++  version: "0.1.0",
++};
++
++// ---------------------------------------------------------------------------
++// Pattern matchers (simple heuristic-based detection)
++// ---------------------------------------------------------------------------
++
++interface IssuePattern {
++  severity: ReviewSeverity;
++  rule: string;
++  test: (file: FileChange, lines: ReadonlyArray<string>) => RegExpExecArray | null;
++  message: string;
++  suggestion: string;
++}
++
++/**
++ * Known patterns the agent can detect without external tools.
++ * These are illustrative; real-world agents would use AST or ML.
++ */
++const patterns: ReadonlyArray<IssuePattern> = [
++  // ── Debug artifacts ──────────────────────────────────────────────────────
++  {
++    severity: "warning",
++    rule: "no-console-log",
++    test: (_f, lines) => {
++      for (const line of lines) {
++        const m = /console\.(log|debug|info|warn|error)\(/.exec(line);
++        if (m) return m;
++      }
++      return null;
++    },
++    message: "Console logging statement found",
++    suggestion: "Remove or replace with structured logging before merging",
++  },
++  {
++    severity: "error",
++    rule: "no-debugger",
++    test: (_f, lines) => {
++      for (const line of lines) {
++        const m = /\bdebugger\b/.exec(line);
++        if (m) return m;
++      }
++      return null;
++    },
++    message: "`debugger` statement found in source code",
++    suggestion: "Remove the debugger statement before committing",
++  },
++  {
++    severity: "warning",
++    rule: "no-todo",
++    test: (_f, lines) => {
++      for (const line of lines) {
++        const m = /\/\/\s*TODO/i.exec(line);
++        if (m) return m;
++      }
++      return null;
++    },
++    message: "TODO comment found",
++    suggestion: "Resolve or track the TODO item in your issue tracker",
++  },
++  // ── Security ────────────────────────────────────────────────────────────
++  {
++    severity: "error",
++    rule: "no-inner-html",
++    test: (_f, lines) => {
++      for (const line of lines) {
++        const m = /\.innerHTML\s*=/.exec(line);
++        if (m) return m;
++      }
++      return null;
++    },
++    message: "Assignment to innerHTML detected – XSS risk",
++    suggestion: "Use safe DOM APIs like textContent or a sanitizer library",
++  },
++  {
++    severity: "warning",
++    rule: "sql-injection-risk",
++    test: (_f, lines) => {
++      for (const line of lines) {
++        const m = /(?:execute|query|run)\s*\(\s*[`'"]/.exec(line);
++        if (m) return m;
++      }
++      return null;
++    },
++    message: "Raw SQL string interpolation detected – SQL injection risk",
++    suggestion: "Use parameterised queries or an ORM",
++  },
++  // ── Performance ─────────────────────────────────────────────────────────
++  {
++    severity: "info",
++    rule: "large-dependency-import",
++    test: (_f, lines) => {
++      for (const line of lines) {
++        const m = /import\s+.*\s+from\s+['"]lodash['"]/.exec(line);
++        if (m) return m;
++      }
++      return null;
++    },
++    message: "Importing entire lodash – prefer tree-shakeable sub-imports",
++    suggestion: "Use lodash/{functionName} subpath imports",
++  },
++  // ── TypeScript / JS quality ─────────────────────────────────────────────
++  {
++    severity: "warning",
++    rule: "no-any",
++    test: (_f, lines) => {
++      for (const line of lines) {
++        const m = /:\s*any\b/.exec(line);
++        if (m) return m;
++      }
++      return null;
++    },
++    message: "Type `any` used – disables type checking",
++    suggestion: "Replace `any` with a proper type or `unknown`",
++  },
++  {
++    severity: "info",
++    rule: "long-function",
++    test: (file, _lines) => {
++      const lineCount = file.diff.split("\n").length;
++      // Heuristic: added/changed hunks > 100 lines may warrant refactoring
++      if (lineCount > 100) return [""] as unknown as RegExpExecArray;
++      return null;
++    },
++    message: "Large diff hunk – consider splitting into smaller functions",
++    suggestion: "Refactor this change into smaller, focused functions",
++  },
++];
++
++// ---------------------------------------------------------------------------
++// CodeReviewAgent
++// ---------------------------------------------------------------------------
++
++export class CodeReviewAgent extends Agent<ReviewContext, ReviewOutput> {
++  /**
++   * Additional patterns supplied at construction time (merged with defaults).
++   */
++  private readonly extraPatterns: IssuePattern[] = [];
++
++  constructor(config: Partial<AgentConfig> = {}) {
++    super({ ...DEFAULT_CONFIG, ...config });
++    this.extraPatterns = [];
++  }
++
++  /**
++   * Register additional check patterns at runtime.
++   */
++  addPatterns(...pats: ReadonlyArray<IssuePattern>): this {
++    this.extraPatterns.push(...pats);
++    return this;
++  }
++
++  // ── Execute ──────────────────────────────────────────────────────────────
++
++  protected override async execute(
++    context: ReviewContext,
++  ): Promise<ReviewOutput> {
++    const allPatterns = [...patterns, ...this.extraPatterns];
++    const comments: Array<ReviewComment> = [];
++
++    for (const file of context.files) {
++      const lines = file.diff.split("\n");
++
++      for (const pattern of allPatterns) {
++        const match = pattern.test(file, lines);
++        if (match !== null) {
++          comments.push(this.buildComment(file, pattern, lines, match));
++        }
++      }
++    }
++
++    // Deduplicate by (filePath, line, rule)
++    const unique = this.deduplicate(comments);
++
++    return {
++      summary: `Reviewed ${context.files.length} file(s), found ${unique.length} issue(s)`,
++      comments: unique,
++      filesReviewed: context.files.length,
++      issuesFound: unique.length,
++    };
++  }
++
++  // ── Helpers ──────────────────────────────────────────────────────────────
++
++  private buildComment(
++    file: FileChange,
++    pattern: IssuePattern,
++    lines: ReadonlyArray<string>,
++    match: RegExpExecArray,
++  ): ReviewComment {
++    // Estimate line number from the first added line in the hunk
++    const line = this.guessLine(lines, match);
++
++    return {
++      filePath: file.path,
++      line,
++      severity: pattern.severity,
++      message: pattern.message,
++      rule: pattern.rule,
++      suggestion: pattern.suggestion,
++    };
++  }
++
++  /**
++   * Crude heuristic: find the first `+` line in the diff hunk and use its
++   * position.  In a real agent this would parse unified-diff hunk headers.
++   */
++  private guessLine(lines: ReadonlyArray<string>, _match: RegExpExecArray): number {
++    for (let i = 0; i < Math.min(lines.length, 50); i++) {
++      const header = /^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@/.exec(lines[i]!);
++      if (header) {
++        return Number(header[1]);
++      }
++    }
++    return 1;
++  }
++
++  private deduplicate(
++    comments: ReadonlyArray<ReviewComment>,
++  ): ReadonlyArray<ReviewComment> {
++    const seen = new Set<string>();
++    const result: Array<ReviewComment> = [];
++
++    for (const c of comments) {
++      const key = `${c.filePath}:${c.line}:${c.rule ?? ""}`;
++      if (!seen.has(key)) {
++        seen.add(key);
++        result.push(c);
++      }
++    }
++
++    return result;
++  }
++}
+diff --git a/packages/omnicode-ai/src/review/ReviewContext.ts b/packages/omnicode-ai/src/review/ReviewContext.ts
+new file mode 100644
+index 00000000..5da135e5
+--- /dev/null
++++ b/packages/omnicode-ai/src/review/ReviewContext.ts
+@@ -0,0 +1,15 @@
++/**
++ * Types for PR diff context and code review data.
++ *
++ * Re-exports the shared types so consumers can import solely from
++ * "@omnicode/ai/review" if they prefer.
++ */
++
++export type {
++  FileChange,
++  ReviewContext,
++  ReviewComment,
++  ReviewOutput,
++  ReviewSeverity,
++  ExistingComment,
++} from "../types.ts";
+diff --git a/packages/omnicode-ai/src/triage/IssueTriageAgent.ts b/packages/omnicode-ai/src/triage/IssueTriageAgent.ts
+new file mode 100644
+index 00000000..58f5f1c4
+--- /dev/null
++++ b/packages/omnicode-ai/src/triage/IssueTriageAgent.ts
+@@ -0,0 +1,226 @@
++/**
++ * IssueTriageAgent – analyzes new issues, suggests labels, assignees, and priority.
++ *
++ * The agent classifies incoming issues by type (bug, feature, enhancement, etc.)
++ * using heuristic pattern matching on the title and body, then maps those
++ * classifications to suggested labels, assignees, and priority levels.
++ *
++ * This is a reference implementation. Production agents would integrate
++ * with ML classifiers, historical issue data, or team assignment rules.
++ */
++
++import { Agent, type AgentConfig } from "../Agent.ts";
++import type {
++  IssueType,
++  Priority,
++  TriageContext,
++  TriageOutput,
++} from "../types.ts";
++
++// ---------------------------------------------------------------------------
++// Default config
++// ---------------------------------------------------------------------------
++
++const DEFAULT_CONFIG: AgentConfig = {
++  type: "issue-triage",
++  name: "Issue Triage Agent",
++  description: "Classifies new issues by type, suggests labels, assignees, and priority",
++  version: "0.1.0",
++};
++
++// ---------------------------------------------------------------------------
++// Classification rules
++// ---------------------------------------------------------------------------
++
++/**
++ * A single classification rule: a label, a set of trigger patterns, and
++ * the resulting type/priority mapping.
++ */
++interface ClassificationRule {
++  type: IssueType;
++  patterns: ReadonlyArray<RegExp>;
++  label: string;
++  priority: Priority;
++}
++
++const rules: ReadonlyArray<ClassificationRule> = [
++  {
++    type: "bug",
++    patterns: [
++      /(?:^|\s)(bug|bug report|broken|crash|error|fails?|failing|incorrect|wrong|not working|regression|issue)(?:\s|$)/i,
++      /(?:^|\s)(fix|hotfix|patch|defect)(?:\s|$)/i,
++    ],
++    label: "bug",
++    priority: "high",
++  },
++  {
++    type: "feature",
++    patterns: [
++      /(?:^|\s)(feature|feat|request|new|add|implement|proposal|suggestion)(?:\s|$)/i,
++      /(?:^|\s)(would be nice|would like|i wish|idea)(?:\s|$)/i,
++    ],
++    label: "enhancement",
++    priority: "medium",
++  },
++  {
++    type: "enhancement",
++    patterns: [
++      /(?:^|\s)(improve|improvement|refine|better|optimize|upgrade|enhance)(?:\s|$)/i,
++    ],
++    label: "enhancement",
++    priority: "medium",
++  },
++  {
++    type: "documentation",
++    patterns: [
++      /(?:^|\s)(docs?|documentation|readme|typo|spelling|comment|doc)(?:\s|$)/i,
++    ],
++    label: "documentation",
++    priority: "low",
++  },
++  {
++    type: "question",
++    patterns: [
++      /(?:^|\s)(question|how|why|what|help|support|usage)(?:\s|$)/i,
++      /\?$/,
++    ],
++    label: "question",
++    priority: "low",
++  },
++  {
++    type: "performance",
++    patterns: [
++      /(?:^|\s)(performance|slow|latency|memory|leak|bottleneck|perf)(?:\s|$)/i,
++    ],
++    label: "performance",
++    priority: "medium",
++  },
++  {
++    type: "security",
++    patterns: [
++      /(?:^|\s)(security|vulnerability|cve|exploit|xss|sqli|injection|auth)(?:\s|$)/i,
++    ],
++    label: "security",
++    priority: "critical",
++  },
++  {
++    type: "refactor",
++    patterns: [
++      /(?:^|\s)(refactor|cleanup|restructure|technical debt|tech debt|code quality)(?:\s|$)/i,
++    ],
++    label: "refactor",
++    priority: "low",
++  },
++];
++
++// ---------------------------------------------------------------------------
++// IssueTriageAgent
++// ---------------------------------------------------------------------------
++
++export class IssueTriageAgent extends Agent<TriageContext, TriageOutput> {
++  /**
++   * Additional rules supplied at construction (merged with defaults).
++   */
++  private readonly extraRules: ReadonlyArray<ClassificationRule> = [];
++
++  constructor(config: Partial<AgentConfig> = {}) {
++    super({ ...DEFAULT_CONFIG, ...config });
++
++    if (config.options?.rules && Array.isArray(config.options.rules)) {
++      this.extraRules = config.options.rules as ReadonlyArray<ClassificationRule>;
++    }
++  }
++
++  // ── Execute ──────────────────────────────────────────────────────────────
++
++  protected override async execute(
++    context: TriageContext,
++  ): Promise<TriageOutput> {
++    const text = `${context.title}\n${context.body}`;
++    const allRules = [...rules, ...this.extraRules];
++
++    // Score each rule by counting matched patterns
++    const scores = new Map<ClassificationRule, number>();
++
++    for (const rule of allRules) {
++      let score = 0;
++      for (const pattern of rule.patterns) {
++        if (pattern.test(text)) {
++          // Multiple matches on different patterns increase confidence
++          score += 1;
++        }
++      }
++      if (score > 0) {
++        scores.set(rule, score);
++      }
++    }
++
++    // Choose the best-matching rule (highest score, then first rule order)
++    const best = [...scores.entries()].sort(
++      ([, a], [, b]) => b - a,
++    )[0];
++
++    // Base output
++    const output: TriageOutput = {
++      issueType: best?.[0].type ?? "other",
++      suggestedLabels: [],
++      suggestedAssignees: [],
++      priority: best?.[0].priority ?? "medium",
++      confidence: best ? Math.min(best[1] / 3, 1.0) : 0.2,
++      reasoning: best
++        ? `Matched ${best[1]} pattern(s) for type "${best[0].type}"`
++        : "No strong classification signals detected — defaulting to 'other'",
++    };
++
++    // Build output using a mutable record to satisfy ReadonlyArray fields
++    const suggestedLabels: Array<string> = [...context.existingLabels];
++    if (best) {
++      suggestedLabels.push(best[0].label);
++    }
++    suggestedLabels.push(output.issueType);
++
++    // Promote priority for security/bug issues with strong signal
++    let priority: Priority = output.priority;
++    if (
++      (output.issueType === "security" || output.issueType === "bug") &&
++      output.confidence >= 0.66
++    ) {
++      priority = output.issueType === "security" ? "critical" : "high";
++    }
++
++    const suggestedAssignees = this.suggestAssignees(context, output);
++
++    return {
++      ...output,
++      priority,
++      suggestedLabels: [...new Set(suggestedLabels)].sort(),
++      suggestedAssignees,
++    };
++  }
++
++  // ── Assignee suggestion ──────────────────────────────────────────────────
++
++  /**
++   * Simple assignee heuristic.  In production this would talk to a team
++   * membership service or load-balancing algorithm.
++   */
++  private suggestAssignees(
++    _context: TriageContext,
++    output: TriageOutput,
++  ): ReadonlyArray<string> {
++    if (output.priority === "critical" || output.priority === "high") {
++      // Critical/high items should be assigned to a senior maintainer
++      return ["senior-maintainer"];
++    }
++
++    if (output.issueType === "documentation") {
++      return ["docs-team"];
++    }
++
++    if (output.issueType === "question") {
++      return ["support-team"];
++    }
++
++    return [];
++  }
++}
+diff --git a/packages/omnicode-ai/src/types.ts b/packages/omnicode-ai/src/types.ts
+new file mode 100644
+index 00000000..e1844397
+--- /dev/null
++++ b/packages/omnicode-ai/src/types.ts
+@@ -0,0 +1,191 @@
++/**
++ * Shared types for the @omnicode/ai agent framework.
++ *
++ * Provides base types for agents, review results, and triage results,
++ * following Effect-inspired patterns for structured results and composability.
++ */
++
++// ---------------------------------------------------------------------------
++// Agent metadata
++// ---------------------------------------------------------------------------
++
++/**
++ * Unique identifier for an agent within a registry.
++ * Convention: lowercase kebab-case, e.g. "code-review", "issue-triage".
++ */
++export type AgentType = string;
++
++/**
++ * Semantic version string (MAJOR.MINOR.PATCH).
++ */
++export type Version = string;
++
++/**
++ * Descriptor every agent must provide.
++ */
++export interface AgentDescriptor {
++  readonly type: AgentType;
++  readonly name: string;
++  readonly description: string;
++  readonly version: Version;
++}
++
++// ---------------------------------------------------------------------------
++// Lifecycle
++// ---------------------------------------------------------------------------
++
++/**
++ * Lifecycle phases an agent moves through.
++ */
++export type AgentLifecycle =
++  | "idle"
++  | "initializing"
++  | "ready"
++  | "running"
++  | "completed"
++  | "failed"
++  | "cleanedUp";
++
++/**
++ * Result of a single agent execution.
++ */
++export interface AgentResult<TOutput = unknown> {
++  readonly agent: AgentType;
++  readonly success: boolean;
++  readonly output: TOutput;
++  readonly durationMs: number;
++  readonly error?: string;
++}
++
++// ---------------------------------------------------------------------------
++// Review types
++// ---------------------------------------------------------------------------
++
++/**
++ * Severity level for a review comment.
++ */
++export type ReviewSeverity = "error" | "warning" | "info" | "suggestion";
++
++/**
++ * A single file change in a pull-request diff.
++ */
++export interface FileChange {
++  /** Path relative to repository root, e.g. "src/index.ts" */
++  readonly path: string;
++  /** Unified diff content (the raw diff lines) */
++  readonly diff: string;
++  /** Status of the file in the PR */
++  readonly status: "added" | "modified" | "deleted" | "renamed";
++  /** Old path (only for renames) */
++  readonly previousPath?: string;
++}
++
++/**
++ * Full context for a code-review invocation.
++ */
++export interface ReviewContext {
++  /** Repository owner/name like "owner/repo" */
++  readonly repo: string;
++  /** Pull-request number */
++  readonly prNumber: number;
++  /** PR title */
++  readonly title: string;
++  /** PR description / body */
++  readonly description: string;
++  /** The files changed in this PR */
++  readonly files: ReadonlyArray<FileChange>;
++  /** Comments already posted on the PR (for de-duplication) */
++  readonly existingComments: ReadonlyArray<ExistingComment>;
++  /** Base branch (target of the PR) */
++  readonly baseBranch: string;
++  /** Head branch (source of the PR) */
++  readonly headBranch: string;
++}
++
++/**
++ * A comment that already exists on the PR.
++ */
++export interface ExistingComment {
++  readonly id: string;
++  readonly body: string;
++  readonly author: string;
++  readonly filePath?: string;
++  readonly line?: number;
++}
++
++/**
++ * A single review comment produced by an agent.
++ */
++export interface ReviewComment {
++  readonly filePath: string;
++  readonly line: number;
++  readonly severity: ReviewSeverity;
++  readonly message: string;
++  readonly rule?: string;
++  readonly suggestion?: string;
++}
++
++/**
++ * Structured output from a code-review run.
++ */
++export interface ReviewOutput {
++  readonly summary: string;
++  readonly comments: ReadonlyArray<ReviewComment>;
++  readonly filesReviewed: number;
++  readonly issuesFound: number;
++}
++
++// ---------------------------------------------------------------------------
++// Triage types
++// ---------------------------------------------------------------------------
++
++/**
++ * Category of an issue.
++ */
++export type IssueType =
++  | "bug"
++  | "feature"
++  | "enhancement"
++  | "documentation"
++  | "question"
++  | "refactor"
++  | "performance"
++  | "security"
++  | "other";
++
++/**
++ * Priority level for an issue.
++ */
++export type Priority = "critical" | "high" | "medium" | "low";
++
++/**
++ * Context for a triage invocation.
++ */
++export interface TriageContext {
++  /** Repository owner/name like "owner/repo" */
++  readonly repo: string;
++  /** Issue number */
++  readonly issueNumber: number;
++  /** Issue title */
++  readonly title: string;
++  /** Issue body / description */
++  readonly body: string;
++  /** Labels already applied to the issue */
++  readonly existingLabels: ReadonlyArray<string>;
++  /** Issue author username */
++  readonly author: string;
++}
++
++/**
++ * Structured output from a triage run.
++ */
++export interface TriageOutput {
++  readonly issueType: IssueType;
++  readonly suggestedLabels: ReadonlyArray<string>;
++  readonly suggestedAssignees: ReadonlyArray<string>;
++  readonly priority: Priority;
++  readonly confidence: number; // 0.0 – 1.0
++  readonly reasoning: string;
++}
++
++

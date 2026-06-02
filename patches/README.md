@@ -1,114 +1,82 @@
 # OmniCode — Patch Pack for T3 Code
 
-A universal code workspace extension for [T3 Code](https://github.com/pingdotgg/t3code) that adds integrated GitHub/GitLab browsing, AI agents for issues/PRs/code review, and a plugin/extension system.
-
-## What is This?
-
-This is a **pack of 15 clean patches** that apply directly to the upstream T3 Code repository (commit `b3e8c033`). Patches 1–8 add the OmniCode package infrastructure (GitHub browser, AI agents, plugin system). Patches 9–15 add deep VCS integration: git worktree creation from issues, auto-detect project remotes, and seamless chat/thread integration within T3 Code's UI.
-
-With all 15 patches you get:
-
-- **GitHub Browser** — search repos, browse issues, view PRs
-- **AI Agents** — code review agents that read PR diffs, issue triage agents that suggest labels
-- **Plugin System** — third-party extensions with hooks, manifest-declared contributions
-- **Multi-Git Support** — provider abstraction for GitHub, GitLab, etc.
-- **VCS Integration** — auto-detect git remotes on project open, one-click worktree creation from issues
-- **AI-Ready Chat** — worktrees automatically open a new chat thread with full context
-- **REST API** — 8 Effect-wired endpoints for status, plugins, agents, repos, issues, worktrees, remote detection
+Extends T3 Code with an integrated GitHub issues sidebar, top-bar toggle button, and right-side diffpanel. Pulls issues live from the GitHub REST API — no server config needed.
 
 ## Quick Start
 
 ```bash
-# Clone T3 Code
 git clone https://github.com/pingdotgg/t3code.git
 cd t3code
-git checkout b3e8c033  # base commit
-
-# Apply OmniCode patches (patch-package style)
-bash /path/to/patches/apply-omnicode.sh
-# or manually:
-git apply patches/0001-*.patch  # etc.
-
-# Install and verify
+git checkout b3e8c033
+bash /path/to/omnicode/patches/apply-omnicode.sh
 bun install
-npx tsgo --noEmit
 ```
 
-## Patch Series (patch-package format)
+## What You Get
 
-All patches are clean unified diffs in **patch-package style** — no git-am headers, plain `git apply` compatible. Named sequentially for ordered application.
+- **Top-bar issues toggle** — ◉ button in the BranchToolbar and ChatHeader
+- **Right-side issues panel** — matches the DiffPanel pattern: resizable sidebar, DiffPanelShell layout
+- **Live GitHub issues** — auto-detects the repo from the project cwd, fetches directly from `api.github.com` (CORS-enabled, no auth needed for public repos)
+- **Full filter/search** — filter by state (open/closed/all), type (bug/feature/all), text search
+- **Clickable issue cards** — opens GitHub issue in a new tab
+- **Loading/error/empty states** — skeleton loading, error message with retry, "all clear!" empty state
 
-| # | Patch | Size | What it adds |
-|---|-------|------|-------------|
-| 1 | Infrastructure | 6.6 KB | Workspace config, package.json, tsconfig |
-| 2 | Contracts | 20 KB | Effect Schema types (providers, repos, issues, agents, extensions) |
-| 3 | Plugin | 32 KB | Plugin interface, manifest, hooks, discovery, registry |
-| 4 | GitHub | 40 KB | Octokit wrappers: IssuesService, PRsService, ReposService, ReviewsService |
-| 5 | AI | 32 KB | Agent base class, AgentRegistry, CodeReviewAgent, IssueTriageAgent |
-| 6 | Server | 33 KB | Effect service layer, OmniCodeRouter (6 endpoints) |
-| 7 | Web UI | 67 KB | 5 route pages, sidebar nav, icon, animations |
-| 8 | Docs | 58 KB | SPEC.md architecture, README updates |
-| 9 | Server (VCS) | 1 KB | Wire VcsIntegrationService into OmniCode services |
-| 10 | Router (VCS) | 4 KB | Worktree creation + remote detection endpoints |
-| 11 | Core (VCS) | 20 KB | VcsIntegrationService (Effect TS + ChildProcessSpawner) |
-| 12 | Web (Hooks) | 16 KB | React hooks: project detection, issues, worktree flow |
-| 13 | Web (Issues) | 20 KB | Full Issues route page with chat integration |
-| 14 | Web (Nav) | 1 KB | Issues sidebar nav item |
-| 15 | Web (Redirect) | 1 KB | Default redirect to /omnicode/issues |
+## Patch Series (9 patches)
 
-## New Packages
+| # | What | Size |
+|---|------|------|
+| 1 | Infrastructure: workspace config, package.json, tsconfig | 289 lines |
+| 2 | Contracts: @omnicode/contracts Effect Schema types | 442 lines |
+| 3 | Plugin: extensible plugin system (discovery, registry, hooks) | 1,012 lines |
+| 4 | GitHub: Octokit-based API client (Issues, PRs, Repos, Reviews) | 1,131 lines |
+| 5 | AI: agent framework + CodeReviewAgent, IssueTriageAgent | 1,087 lines |
+| 6 | Server: OmniCode service layer + REST router + VCS integration | 1,713 lines |
+| 7 | Web UI: IssuesSidebar, BranchToolbar toggle, ChatHeader toggle | 1,844 lines |
+| 8 | Docs: SPEC.md architecture, updated README | 1,209 lines |
+| 9 | Apply script + this README | 186 lines |
 
-Applied patches create these packages under the `@omnicode/*` namespace:
-
-```
-packages/omnicode-contracts/  — Effect Schema type definitions
-packages/omnicode-plugin/     — Plugin system (discovery, registry, hooks)
-packages/omnicode-github/     — Octokit-based GitHub API
-packages/omnicode-ai/         — AI agent framework
-packages/core/src/omnicode/   — Server layer + REST router
-apps/web/src/                 — UI routes, components, styles
-```
-
-## Design Philosophy
-
-Follows T3 Code's architecture:
-- **Effect-first** — all services are Effect Context.Layers with Schema validation
-- **Minimal deps** — octokit for GitHub, effect for the rest
-- **Plugin isolation** — plugins get per-session instances, no global state
-- **Extensible** — new providers (GitLab, Gitea) implement the same service interface
-
-## Applying to Upstream Updates
-
-When T3 Code updates, rebase the patches:
-
-```bash
-git remote add upstream https://github.com/pingdotgg/t3code.git
-git fetch upstream
-git rebase --onto upstream/main b3e8c033 omnicode-patches
-# Resolve conflicts if any, then regenerate:
-git format-patch upstream/main..omnicode-patches -o patches/
-```
-
-## File Structure
+## How the Issues Sidebar Works
 
 ```
-patches/
-├── 0001-*.patch   → Workspace infrastructure
-├── 0002-*.patch   → Effect Schema contracts
-├── 0003-*.patch   → Plugin system
-├── 0004-*.patch   → GitHub Octokit client
-├── 0005-*.patch   → AI agent framework
-├── 0006-*.patch   → Server layer + REST API
-├── 0007-*.patch   → Web UI routes & components
-├── 0008-*.patch   → Documentation
-├── 0009-*.patch   → Server VCS wiring
-├── 0010-*.patch   → VCS REST endpoints
-├── 0011-*.patch   → VCS integration service
-├── 0012-*.patch   → React hooks (project, issues, worktree)
-├── 0013-*.patch   → Issues route page
-├── 0014-*.patch   → Sidebar nav item
-├── 0015-*.patch   → Default redirect
-├── README.md      ← this file
-├── apply-omnicode.sh  → automatic apply script
-└── gen-patches.sh     → patch regeneration script
+1. User opens a project in T3 Code
+2. Click the ◉ button in the top bar (BranchToolbar)
+3. Right sidebar opens (same pattern as DiffPanel)
+4. Repo detection:
+   → Tries OmniCode server API (/api/omnicode/projects/detect-remote) for full owner/repo
+   → Falls back to project folder name
+5. Fetches issues from api.github.com (public repos only, 60 req/hr rate limit)
+6. Issues render as clickable cards → click opens GitHub issue
 ```
+
+## Files Changed
+
+**New files:**
+- `packages/omnicode-contracts/` — Effect Schema type definitions
+- `packages/omnicode-plugin/` — Plugin system
+- `packages/omnicode-github/` — Octokit-based GitHub API
+- `packages/omnicode-ai/` — AI agent framework  
+- `packages/core/src/omnicode/` — Server layer + REST router
+- `apps/web/src/components/IssuesSidebar.tsx` — Right-side issues panel
+- `apps/web/src/issuesRouteSearch.ts` — Issues URL search param
+- `apps/web/src/lib/omniCodeIssueStore.ts` — Global issue store
+- `apps/web/src/lib/omnicodeProjectDetector.ts` — Project/repo detection hooks
+- `SPEC.md` — Full architecture specification
+
+**Modified files:**
+- `apps/web/src/components/BranchToolbar.tsx` — Adds ◉ issues toggle button
+- `apps/web/src/components/ChatView.tsx` — Passes issues props to BranchToolbar
+- `apps/web/src/components/chat/ChatHeader.tsx` — Adds ◉ issues toggle
+- `apps/web/src/routes/_chat.$environmentId.$threadId.tsx` — IssuesInlineSidebar + cwd derivation
+- `apps/web/src/routes/__root.tsx` — Auto-issue detection hook
+- `apps/server/src/server.ts` — OmniCode services wired into DI graph
+- `package.json` / `turbo.json` / `tsconfig.base.json` — Workspace config
+- `README.md` — Updated project readme
+
+## No Behavior Changed
+
+All original T3 Code functionality is preserved. The patches only ADD new features:
+- A new button appears in the toolbar (does nothing until clicked)
+- A new sidebar exists (only shown when button is clicked)
+- New packages exist (only loaded when used)
+
+Nothing in T3 Code's core chat, diff panel, terminal, or git integration is modified.

@@ -1,0 +1,1209 @@
+diff --git a/README.md b/README.md
+index c439743c..b5cd0c45 100644
+--- a/README.md
++++ b/README.md
+@@ -1,63 +1,64 @@
+-# T3 Code
++# OmniCode
+ 
+-T3 Code is a minimal web GUI for coding agents (currently Codex, Claude, and OpenCode, more coming soon).
++A **patch set** that turns [T3 Code](https://github.com/pingdotgg/t3code) into a universal code workspace with integrated GitHub/GitLab browsing, AI agents, and a plugin system.
+ 
+-## Installation
+-
+-> [!WARNING]
+-> T3 Code currently supports Codex, Claude, and OpenCode.
+-> Install and authenticate at least one provider before use:
+->
+-> - Codex: install [Codex CLI](https://developers.openai.com/codex/cli) and run `codex login`
+-> - Claude: install [Claude Code](https://claude.com/product/claude-code) and run `claude auth login`
+-> - OpenCode: install [OpenCode](https://opencode.ai) and run `opencode auth login`
+-
+-### Run without installing
++## Quick Start
+ 
+ ```bash
+-npx t3
++# Clone T3 Code at the base commit
++git clone https://github.com/pingdotgg/t3code.git
++cd t3code
++git checkout b3e8c033
++
++# Apply OmniCode patches
++git clone https://github.com/blckhndr/omnicode.git
++bash omnicode/apply-omnicode.sh
++
++# Install & verify
++bun install
++npx tsgo --noEmit
+ ```
+ 
+-### Desktop app
++## What You Get
+ 
+-Install the latest version of the desktop app from [GitHub Releases](https://github.com/pingdotgg/t3code/releases), or from your favorite package registry:
++- **GitHub browser** — search repos, browse issues, review PRs
++- **AI agents** — code review, issue triage, extensible framework
++- **Plugin system** — third-party extensions with hooks and manifests
++- **Multi-git support** — GitHub, GitLab, etc. through a common abstraction
++- **VCS integration** — auto-detect remotes, create worktrees from issues
+ 
+-#### Windows (`winget`)
++## Patches (15 total)
+ 
+-```bash
+-winget install T3Tools.T3Code
+-```
++| # | Area | What it adds |
++|---|------|-------------|
++| 1 | Workspace | Package config, tsconfig for `@omnicode/*` packages |
++| 2 | Contracts | Effect Schema types for repos, issues, agents, plugins |
++| 3 | Plugin | Plugin interface, manifest, hooks, registry |
++| 4 | GitHub | Octokit wrappers — Issues, PRs, Repos, Reviews |
++| 5 | AI | CodeReviewAgent, IssueTriageAgent, AgentRegistry |
++| 6 | Server | Effect service layer, REST endpoints |
++| 7 | Web UI | Route pages, sidebar nav, animations |
++| 8 | Docs | SPEC.md architecture doc |
++| 9–15 | VCS | Worktree creation, remote detection, issue UI, chat integration |
+ 
+-#### macOS (Homebrew)
++## Structure
+ 
+-```bash
+-brew install --cask t3-code
+ ```
+-
+-#### Arch Linux (AUR)
+-
+-```bash
+-yay -S t3code-bin
++packages/
++├── omnicode-contracts/   → Schema types
++├── omnicode-plugin/      → Plugin system
++├── omnicode-github/      → GitHub API client
++├── omnicode-ai/          → AI agents
++packages/core/src/omnicode/ → Server + REST router
++apps/web/src/             → UI routes
++patches/                  → All 15 patch files
++apply-omnicode.sh         → Apply script
+ ```
+ 
+-## Some notes
+-
+-We are very very early in this project. Expect bugs.
+-
+-We are not accepting contributions yet.
+-
+-Observability guide: [docs/observability.md](./docs/observability.md)
+-
+-## If you REALLY want to contribute still.... read this first
+-
+-Before local development, prepare the environment and install dependencies:
+-
+-```bash
+-# Optional: only needed if you use mise for dev tool management.
+-mise install
+-bun install .
+-```
++## Requirements
+ 
+-Read [CONTRIBUTING.md](./CONTRIBUTING.md) before opening an issue or PR.
++- T3 Code at `b3e8c033`
++- Git 2.30+
++- bun 1.2+
+ 
+-Need support? Join the [Discord](https://discord.gg/jn4EGJjrvv).
++See [`patches/README.md`](patches/README.md) for patch details.
+diff --git a/SPEC.md b/SPEC.md
+new file mode 100644
+index 00000000..90e6e67b
+--- /dev/null
++++ b/SPEC.md
+@@ -0,0 +1,1087 @@
++# OmniCode — Universal Code Workspace
++
++**OmniCode** is a fork of [T3 Code](https://github.com/pingdotgg/t3code) that extends its AI-native development philosophy into a universal, extensible, multi-provider coding platform. This specification describes the architecture, plugin system, API integrations, AI agent framework, and UI extension model that define OmniCode.
++
++---
++
++## Vision & Philosophy
++
++### Why OmniCode Exists
++
++T3 Code proved that AI-native coding in the terminal is not only possible but transformative. However, real-world software development involves far more than chatting with an LLM: developers navigate repositories across multiple hosting providers, triage issues, review pull requests, manage worktrees, and increasingly rely on automated agents for code review and issue management.
++
++OmniCode extends T3 Code from a single-provider AI chat interface into an **open platform** where:
++
++- Developers can browse repos, search issues, and review PRs across **any Git hosting provider** from one unified UI.
++- **AI agents** — code reviewers, issue triagers, auto-fix agents — operate as first-class citizens alongside the chat interface.
++- **Third-party plugins** can contribute new providers, agents, UI panels, and lifecycle hooks without modifying OmniCode core.
++- Everything is built on **Effect** — the same typed, composable, error-aware foundation that makes T3 Code reliable.
++
++### Core Tenets
++
++1. **Provider Paradise** — Every Git hosting provider (GitHub, GitLab, Bitbucket, Gitea, Azure DevOps) speaks the same `SourceControlProviderShape` interface. Users are never locked in.
++2. **Extensibility First** — The plugin system is not an afterthought; it's a first-class architectural primitive. Any behavior can be contributed, overridden, or replaced.
++3. **Agents as Plugins** — AI agents are just plugins that implement the `Agent` base class. They register themselves, declare capabilities, and are discovered and orchestrated automatically.
++4. **All Contracts Are Public** — Every schema, service interface, and extension point is exported from `@omnicode/contracts`. Nothing is hidden.
++5. **Performance & Reliability** — Inherited from T3 Code: Effect's typed errors, structured concurrency, and resource-safe patterns are used throughout.
++
++### Design Inspirations
++
++| Influence | How It Shaped OmniCode |
++|-----------|----------------------|
++| **VSCode Extension API** | Plugin manifests, contribution points, activation events, and the lifecycle pattern |
++| **Vim/Neovim Plugin Ecosystem** | Decentralized discovery, plugin markers in package.json, hook-based extensibility |
++| **GitHub CLI (`gh`)** | Octokit-backed services mirror `gh` commands but as composable Effect programs |
++| **LangChain / AI SDKs** | Agent base class with lifecycle hooks, registry dispatch, typed I/O |
++| **Obsidian / Dataview** | Paints (UI decorations) that inject before/after/append/prepend at named targets |
++| **T3 Code's Effect Architecture** | `Context.Service`, `Layer`, `Schema` — all OmniCode services follow the same patterns |
++
++---
++
++## Architecture Overview
++
++OmniCode retains T3 Code's full three-tier architecture and adds a fourth extension layer.
++
++### Layered Architecture
++
++```
++┌─────────────────────────────────────────────────────────────┐
++│                      Web UI (React/Vite)                    │
++│  ┌─────────┐  ┌──────────┐  ┌──────────┐  ┌─────────────┐ │
++│  │  Chat   │  │  Repos   │  │  Issues  │  │   Agents    │ │
++│  │  (T3)   │  │  Browse  │  │  Tracker │  │   Console   │ │
++│  └────▲────┘  └────▲─────┘  └────▲─────┘  └──────▲──────┘ │
++│       │            │              │              │         │
++│  ┌────┴────────────┴──────────────┴──────────────┴──────┐  │
++│  │              Navigation + Extension Shell             │  │
++│  │  (sidebar | top | settings | dropdown targets)       │  │
++│  └─────────────────────────┬────────────────────────────┘  │
++│                            │ JSON-RPC over WebSocket       │
++├────────────────────────────┼────────────────────────────────┤
++│                 Server (Node.js/WebSocket)                  │
++│  ┌─────────────────────────────────────────────────────┐   │
++│  │  AI Agent Orchestrator                              │   │
++│  │  ┌──────────┐ ┌──────────────┐ ┌───────────────┐   │   │
++│  │  │CodeReview│ │IssueTriage   │ │ Plugin Agents │   │   │
++│  │  │Agent     │ │Agent         │ │ (discovered)  │   │   │
++│  │  └──────────┘ └──────────────┘ └───────────────┘   │   │
++│  ├─────────────────────────────────────────────────────┤   │
++│  │  Plugin System                                       │   │
++│  │  ┌──────────┐ ┌──────────┐ ┌──────────────────┐   │   │
++│  │  │ Loader   │ │Registry  │ │ HookManager      │   │   │
++│  │  │discovery │ │lifecycle │ │emit/register     │   │   │
++│  │  └──────────┘ └──────────┘ └──────────────────┘   │   │
++│  ├─────────────────────────────────────────────────────┤   │
++│  │  OmniCode Services                                  │   │
++│  │  ┌──────────┐ ┌──────────┐ ┌──────────────────┐   │   │
++│  │  │ GitHub   │ │ Issues  │ │ PullRequests     │   │   │
++│  │  │ Client   │ │ Service │ │ Service          │   │   │
++│  │  │(Octokit) │ │         │ │                  │   │   │
++│  │  └──────────┘ └──────────┘ └──────────────────┘   │   │
++│  ├─────────────────────────────────────────────────────┤   │
++│  │  T3 Code Core                                       │   │
++│  │  ┌──────────────┐ ┌────────────┐ ┌──────────────┐  │   │
++│  │  │ VCS Drivers  │ │ GitOps     │ │ Worktree     │  │   │
++│  │  │ (git, jj)    │ │ Executor   │ │ Manager      │  │   │
++│  │  └──────────────┘ └────────────┘ └──────────────┘  │   │
++│  │  ┌──────────────────┐ ┌──────────────────────────┐  │   │
++│  │  │ ProviderRegistry │ │ SourceControlProviders   │  │   │
++│  │  │ (dispatch)       │ │ (gh/glab/az/bb CLI)      │  │   │
++│  │  └──────────────────┘ └──────────────────────────┘  │   │
++│  └─────────────────────────────────────────────────────┘   │
++├─────────────────────────────────────────────────────────────┤
++│                      Shared Packages                        │
++│  ┌────────────┐ ┌──────────┐ ┌──────────┐ ┌────────────┐   │
++│  │@omnicode/  │ │@omnicode/│ │@omnicode/│ │@omnicode/  │   │
++│  │ contracts  │ │ plugin   │ │ github   │ │ ai         │   │
++│  │ (schemas)  │ │ (API)    │ │(Octokit) │ │(agents)    │   │
++│  └────────────┘ └──────────┘ └──────────┘ └────────────┘   │
++│  ┌────────────┐ ┌──────────┐                                │
++│  │@t3tools/   │ │@t3tools/ │  (inherited from T3 Code)      │
++│  │ contracts  │ │ shared   │                                │
++│  └────────────┘ └──────────┘                                │
++└─────────────────────────────────────────────────────────────┘
++```
++
++### How OmniCode Extends T3 Code's Effect Architecture
++
++T3 Code extensively uses **Effect** for:
++
++- **`Context.Service`** — Tagged services injected via `Layer`. Every provider, VCS driver, and runtime component is a `Context.Service`.
++- **`Schema`** — Runtime-validated type schemas used for IPC, WebSocket messages, and settings.
++- **`Layer`** — Dependency injection that composes services declaratively.
++- **`Effect`** — Typed, lazy, composable programs with explicit error channels.
++- **`Data.TaggedError`** — Discriminated union errors (e.g., `GitHubNotFoundError`, `GitHubRateLimitError`).
++
++OmniCode extends this with:
++
++| Pattern | T3 Code | OmniCode Addition |
++|---------|---------|-------------------|
++| **Service Tag** | `SourceControlProvider` | `GitHubClient`, `IssuesService`, `PullRequestsService`, `ReviewsService`, `ReposService` |
++| **Schema** | `orchestration.ts`, `settings.ts` | `@omnicode/contracts` — `issues.ts`, `repos.ts`, `agents.ts`, `extensions.ts`, `omnicode.ts` |
++| **Layer** | Provider layers | `gitHubClientLayer`, `issuesServiceLayer`, `pullRequestsServiceLayer` |
++| **Error** | `SourceControlProviderError` | `GitHubApiError`, `GitHubNotFoundError`, `GitHubRateLimitError`, `GitHubAuthError` |
++| **Extension** | (none) | `OmniCodePlugin` interface, `PluginRegistry`, `HookEmitter`, `Agent` base class |
++
++---
++
++## Project Structure
++
++```
++omnicode/
++├── apps/
++│   ├── web/                     # React/Vite SPA (TanStack Router)
++│   │   ├── src/
++│   │   │   ├── lib/             # Client-side actions & stores
++│   │   │   └── routes/          # TanStack Router routes (chat, settings, etc.)
++│   │   └── ...
++│   ├── server/                  # Node.js WebSocket server
++│   │   ├── src/
++│   │   │   ├── wsServer.ts      # WebSocket route definitions
++│   │   │   ├── providerManager.ts
++│   │   │   └── codexAppServerManager.ts
++│   │   └── ...
++│   ├── desktop/                 # Electron shell
++│   ├── mobile/                  # React Native (Codex-first)
++│   └── marketing/               # Landing page
++│
++├── packages/
++│   ├── contracts/               # @t3tools/contracts — T3 Code shared schemas
++│   │   └── src/
++│   │       ├── orchestration.ts # Provider runtime, session, event schemas
++│   │       ├── sourceControl.ts # SourceControlProviderKind, ChangeRequest, errors
++│   │       ├── vcs.ts           # VcsDriverKind, VcsDriverCapabilities, errors
++│   │       ├── git.ts           # Git-specific schemas
++│   │       ├── settings.ts      # User settings schemas
++│   │       └── ...
++│   │
++│   ├── shared/                  # @t3tools/shared — utilities
++│   │   └── src/
++│   │       ├── git.ts           # Worktree branch prefixes, branch sanitization
++│   │       ├── sourceControl.ts # Provider detection, presentation/terminology
++│   │       ├── shell.ts         # Shell execution utilities
++│   │       └── ...
++│   │
++│   ├── omnicode-contracts/      # @omnicode/contracts — OmniCode schemas
++│   │   └── src/
++│   │       ├── omnicode.ts      # AiProviderKind, AiProviderConfig, OmnicodeConfig
++│   │       ├── issues.ts        # IssueListQuery, IssueCreateInput, IssueView, IssueLabel
++│   │       ├── repos.ts         # RepositoryView, RepoSearchQuery, RepoSearchResult
++│   │       ├── agents.ts        # AgentKind, AgentExecutionRequest, AgentStatus, AgentInfo
++│   │       └── extensions.ts    # NavigationTarget, ExtensionPoint, ProviderContribution,
++│   │                            # PaintContribution, ExtensionSchema, AuthMethod
++│   │
++│   ├── omnicode-plugin/         # @omnicode/plugin — Plugin system
++│   │   └── src/
++│   │       ├── types.ts         # OmniCodePlugin interface, PluginManifest, PluginContext,
++│   │       │                    # HookHandler, PluginHook context types, contribution types
++│   │       ├── loader.ts        # PluginLoader — discoverPlugins, loadPluginModule,
++│   │       │                    # validatePluginModule, DiscoPlugin, DiscoveryResult
++│   │       ├── hooks.ts         # HookEmitter — register, unregister, emit, priority ordering
++│   │       └── registry.ts      # PluginRegistry — register, load, activate, deactivate,
++│   │                            # getAgents/getRoutes/getProviders/getPaints
++│   │
++│   ├── omnicode-github/         # @omnicode/github — Octokit integration
++│   │   └── src/
++│   │       ├── GitHubClient.ts  # Octokit wrapper, auth configs, error classification,
++│   │       │                    # Context.Service tag, make/layer
++│   │       ├── IssuesService.ts # getIssue, createIssue, updateIssue, listIssues,
++│   │       │                    # searchIssues, listComments, createComments
++│   │       ├── PullRequestsService.ts # listPRs, getPR, createPR, updatePR,
++│   │       │                          # listPRFiles, listReviewComments
++│   │       ├── ReposService.ts  # searchRepos, getRepo, listForUser, listForOrg
++│   │       └── ReviewsService.ts # listReviews, createReview, updateReview,
++│   │                            # createInlineComment
++│   │
++│   └── omnicode-ai/             # @omnicode/ai — AI agent framework
++│       └── src/
++│           ├── types.ts         # AgentType, AgentLifecycle, AgentResult, AgentDescriptor,
++│           │                    # ReviewContext, ReviewOutput, ReviewComment, FileChange,
++│           │                    # TriageContext, TriageOutput, IssueType, Priority
++│           ├── Agent.ts         # Abstract Agent<TInput, TOutput> — run(), initialize(),
++│           │                    # execute(), complete(), cleanup(), status lifecycle
++│           ├── AgentRegistry.ts # AgentRegistry — register, unregister, dispatch,
++│           │                    # get, require, listTypes, listAgents
++│           ├── review/
++│           │   ├── CodeReviewAgent.ts # Pattern-matching PR review agent
++│           │   └── ReviewContext.ts   # Re-exports review types
++│           └── triage/
++│               └── IssueTriageAgent.ts # Heuristic-based issue classification agent
++│
++├── scripts/                     # Build and dev tooling
++├── patches/                     # Dependency patches (effect 4.0.0-beta.73, etc.)
++└── AGENTS.md                    # Agent task instructions (inherited T3 Code convention)
++```
++
++### Package Responsibility Matrix
++
++| Package | Role | Dependencies | Consumers |
++|---------|------|-------------|-----------|
++| `@omnicode/contracts` | Schema-only contracts for OmniCode services | `effect` | All OmniCode packages, plugin authors |
++| `@omnicode/plugin` | Plugin lifecycle, discovery, registry, hooks | `effect`, `@omnicode/contracts` | `apps/server`, 3rd-party plugins |
++| `@omnicode/github` | Octokit-based GitHub API services | `effect`, `@octokit/rest`, `@omnicode/contracts` | `apps/server`, AI agents, plugins |
++| `@omnicode/ai` | Agent base class, registry, reference implementations | `effect` | `apps/server`, plugin agents |
++| `@t3tools/contracts` | T3 Code shared schemas | `effect` | All T3 Code packages |
++| `@t3tools/shared` | Runtime utilities (git, shell, source control detection) | `effect` | `apps/server`, `apps/web` |
++
++---
++
++## Plugin System Design
++
++### Plugin Lifecycle
++
++Every plugin moves through a well-defined state machine:
++
++```
++          ┌──────────────────┐
++          │    INACTIVE      │
++          └────────┬─────────┘
++                   │ register / load
++                   ▼
++          ┌──────────────────┐
++          │   ACTIVATING     │ ←── activate() called
++          └────────┬─────────┘
++                   │ success          ┌──────────────┐
++                   ▼                  │              │
++          ┌──────────────────┐   ┌────┤    ERROR     │
++          │     ACTIVE       │   │    │              │
++          └────────┬─────────┘   │    └──────────────┘
++                   │             │
++                   ▼             │
++          ┌──────────────────┐   │
++          │  DEACTIVATING    │───┘
++          └────────┬─────────┘
++                   ▼
++          ┌──────────────────┐
++          │    INACTIVE      │
++          └──────────────────┘
++```
++
++States are tracked via the `PluginState` schema (`"inactive" | "activating" | "active" | "deactivating" | "error"`).
++
++### Manifest Format
++
++Plugins declare themselves via a `package.json` containing an `"omnicode"`, `"omnicode-plugin"`, or `"plugin"` marker field. The `PluginManifest` schema validates the structure:
++
++```typescript
++// From packages/omnicode-plugin/src/types.ts
++
++export interface PluginManifest {
++  /** Unique plugin identifier (branded string). */
++  id: PluginId;
++  /** Human-readable name. */
++  name: string;
++  /** Semantic version. */
++  version: string;
++  /** Optional description. */
++  description?: string;
++  /** Author string (npm-style). */
++  author?: string;
++  /** SPDX license identifier. */
++  license?: string;
++  /** Entry point relative to plugin directory. */
++  main: string;                              // default: "index.js"
++  /** Hooks that trigger automatic activation. */
++  activationHooks?: PluginHook[];
++  /** What this plugin contributes to OmniCode. */
++  contributes?: {
++    agents?: AgentContribution[];            // Custom AI agents
++    routes?: RouteContribution[];            // UI navigation targets
++    providers?: ProviderContribution[];      // Git provider backends
++    paints?: PaintContribution[];            // UI decorations
++  };
++}
++```
++
++#### Example Plugin `package.json`
++
++```json
++{
++  "name": "my-code-quality-plugin",
++  "version": "0.1.0",
++  "omnicode": {
++    "id": "my-code-quality",
++    "main": "dist/index.js",
++    "activationHooks": ["pr:created"],
++    "contributes": {
++      "agents": [
++        { "id": "style-checker", "name": "Style Checker", "capabilities": ["code-review"] }
++      ],
++      "routes": [
++        { "id": "quality-dashboard", "label": "Quality", "path": "/quality",
++          "navigation": "sidebar", "component": "QualityDashboard" }
++      ],
++      "providers": [
++        { "id": "gitlab-self", "name": "GitLab Self-Hosted", "type": "gitlab",
++          "baseUrl": "https://gitlab.mycompany.com", "authType": "token" }
++      ]
++    }
++  }
++}
++```
++
++### Plugin Discovery & Loading
++
++The `PluginLoader` (`packages/omnicode-plugin/src/loader.ts`) handles discovery:
++
++```
++discoverPlugins(dirs: string[]) → DiscoveryResult
++  │
++  ├─ For each directory, read package.json
++  ├─ Check for plugin marker field ("omnicode" | "omnicode-plugin" | "plugin")
++  ├─ Build and validate PluginManifest via Schema.decodeUnknownSync
++  └─ Return { plugins: DiscoPlugin[], errors: DiscoveryError[] }
++```
++
++The `PluginRegistry` (`packages/omnicode-plugin/src/registry.ts`) manages the full lifecycle:
++
++```typescript
++export interface PluginRegistry {
++  register(plugin: OmniCodePlugin, manifest: PluginManifest, dir?: string): void;
++  unregister(pluginId: string): Promise<void>;
++  load(disco: DiscoPlugin): Promise<void>;
++  loadAll(dirs: string[]): Promise<{ loaded: number; errors: string[] }>;
++  activate(pluginId: string): Promise<void>;
++  deactivate(pluginId: string): Promise<void>;
++  get(pluginId: string): LoadedPlugin | undefined;
++  list(): LoadedPlugin[];
++  getAgents(): AgentContribution[];
++  getRoutes(): RouteContribution[];
++  getProviders(): ProviderContribution[];
++  getPaints(): PaintContribution[];
++}
++```
++
++### Extension Points
++
++Plugins contribute to four categories of extension points:
++
++#### 1. Navigation Targets (`NavigationTarget`)
++
++| Target | Location | Use Case |
++|--------|----------|----------|
++| `"sidebar"` | Left sidebar nav | Primary plugin pages (e.g., "Issues", "Agents") |
++| `"top"` | Top toolbar | Quick-action buttons |
++| `"settings"` | Settings panel section | Configuration forms |
++| `"dropdown"` | User menu dropdown | Account-level actions |
++
++Each route contribution specifies its target via the `RouteContribution` schema:
++
++```typescript
++export interface RouteContribution {
++  id: string;
++  label: string;
++  icon?: string;
++  path: string;          // TanStack Router path
++  component: string;     // React component identifier
++  panel?: string;        // Optional parent panel
++  navigation: "sidebar" | "top" | "settings" | "dropdown";
++}
++```
++
++#### 2. Provider Contributions (`ProviderContribution`)
++
++Plugins can add new Git hosting provider backends:
++
++```typescript
++export interface ProviderContribution {
++  id: string;
++  name: string;
++  type: "github" | "gitlab" | "bitbucket" | "gitea" | "custom";
++  baseUrl: string;
++  apiVersion?: string;
++  authType: "token" | "oauth" | "basic" | "none";
++  capabilities?: string[];
++}
++```
++
++#### 3. Paint Contributions (`PaintContribution`)
++
++Paints are UI decorations injected at named DOM targets:
++
++```typescript
++export interface PaintContribution {
++  id: string;
++  target: string;              // DOM target identifier
++  style?: string;              // CSS or stylesheet URL
++  position: "before" | "after" | "replace" | "append" | "prepend";
++  component: string;           // React component identifier
++}
++```
++
++Positions define how the paint integrates:
++
++| Position | Behavior |
++|----------|----------|
++| `"before"` | Render component before the target element |
++| `"after"` | Render component after the target element |
++| `"replace"` | Replace the target element entirely |
++| `"append"` | Append component as last child of target |
++| `"prepend"` | Prepend component as first child of target |
++
++### Hook System
++
++The `HookEmitter` (`packages/omnicode-plugin/src/hooks.ts`) provides a publish-subscribe system for plugin lifecycle events.
++
++#### Supported Hooks
++
++| Hook | Context Type | Fired When |
++|------|-------------|-----------|
++| `"pr:created"` | `PrCreatedContext` | A pull request is opened |
++| `"pr:reviewed"` | `PrReviewedContext` | A PR review is submitted |
++| `"issue:created"` | `IssueCreatedContext` | A new issue is filed |
++| `"issue:assigned"` | `IssueAssignedContext` | An issue is assigned |
++| `"agent:before_run"` | `AgentBeforeRunContext` | Before an agent executes |
++| `"agent:after_run"` | `AgentAfterRunContext` | After an agent completes |
++
++#### Hook Registration
++
++Plugins receive a `PluginContext` during activation with methods:
++
++```typescript
++export interface PluginContext {
++  readonly manifest: PluginManifest;
++  onHook<H extends PluginHook>(hook: H, handler: HookHandler<H>): void;
++  offHook<H extends PluginHook>(hook: H, handler: HookHandler<H>): void;
++  emit<H extends PluginHook>(hook: H, context: PluginHookContext[H]): Promise<void>;
++  log(level: "debug" | "info" | "warn" | "error", message: string, data?: unknown): void;
++}
++```
++
++#### Hook Execution Semantics
++
++- Handlers execute in **priority order** (higher priority first, default `0`).
++- Errors from individual handlers are caught and logged but **do not prevent other handlers** from running.
++- Hooks are **async** — the emitter awaits each handler in sequence.
++- All hooks are **local** to the running OmniCode instance (no cross-process hook distribution).
++
++### Security Model
++
++1. **Sandboxed Module Loading** — Plugins are loaded via dynamic `import()` which respects the host's module isolation. Plugin code runs in the same Node.js process as the server but should be treated as untrusted.
++2. **Capability-Based Contributions** — Plugins declare what they contribute in their manifest. The registry only exposes declared contributions to the host.
++3. **Activation Hooks** — Plugins can declare `activationHooks` that gate their activation to specific events, preventing unnecessary code execution.
++4. **Context-Limited API** — The `PluginContext` provided to `activate()` exposes only hook registration and logging — plugins have no direct access to filesystem, network, or other services unless explicitly provided.
++5. **Plugin Marker Required** — Only directories with a recognized plugin marker in `package.json` are scanned. This prevents accidental loading of arbitrary packages.
++
++---
++
++## GitHub Integration API
++
++### Octokit Client (`GitHubClient.ts`)
++
++The `GitHubClient` wraps `@octokit/rest` and integrates it with Effect's error handling and dependency injection patterns.
++
++#### Authentication Modes
++
++```typescript
++export type GitHubAuthConfig =
++  | GitHubTokenAuth      // { _tag: "token", token: string }
++  | GitHubAppAuth        // { _tag: "app", appId, privateKey, installationId? }
++  | GitHubOAuthAuth;     // { _tag: "oauth", clientId, clientSecret, code }
++```
++
++#### Error Classification
++
++Octokit errors are mapped to Effect `Data.TaggedError` variants:
++
++| HTTP Status | Error Type | Description |
++|-------------|------------|-------------|
++| `401` | `GitHubAuthError` | Authentication failure |
++| `404` | `GitHubNotFoundError` | Resource not found |
++| `403 / 429` | `GitHubRateLimitError` | Rate limit hit (includes `retryAfter`) |
++| Other | `GitHubApiError` | Generic API error (includes `operation`, `status`) |
++
++#### Service Pattern
++
++All services follow the same structure:
++
++1. **Domain Types** — Raw domain interfaces (e.g., `GitHubIssue`, `PullRequestDetail`)
++2. **Service Shape** — Interface with Effect-typed methods
++3. **Service Tag** — `Context.Service<...>("@omnicode/github/ServiceName")`
++4. **Mappers** — Functions converting Octokit snake_case response data to camelCase domain types
++5. **Constructor** — `make` that maps over `GitHubClient` and returns the shape
++6. **Layer** — `layer = Layer.effect(ServiceTag, make)`
++
++### Services
++
++#### `IssuesService`
++
++| Method | Octokit API | Description |
++|--------|------------|-------------|
++| `getIssue(owner, repo, number)` | `issues.get` | Get a single issue |
++| `createIssue(input)` | `issues.create` | Create a new issue |
++| `updateIssue(input)` | `issues.update` | Update an existing issue |
++| `listIssues(input)` | `issues.listForRepo` | List issues with filters |
++| `searchIssues(input)` | `search.issuesAndPullRequests` | Full-text issue search |
++| `listComments(owner, repo, number)` | `issues.listComments` | List comments on an issue |
++| `createComment(input)` | `issues.createComment` | Add a comment to an issue |
++
++#### `PullRequestsService`
++
++| Method | Octokit API | Description |
++|--------|------------|-------------|
++| `listPullRequests(input)` | `pulls.list` | List PRs with state/head/base filters |
++| `getPullRequest(owner, repo, number)` | `pulls.get` | Get detailed PR info |
++| `createPullRequest(input)` | `pulls.create` | Open a new PR |
++| `updatePullRequest(input)` | `pulls.update` | Update PR title/body/state/base |
++| `listPullRequestFiles(owner, repo, number)` | `pulls.listFiles` | List files changed in a PR |
++| `listReviewComments(input)` | `pulls.listReviewComments` | List review comments on a PR |
++
++#### `ReposService`
++
++| Method | Octokit API | Description |
++|--------|------------|-------------|
++| `searchRepos(input)` | `search.repos` | Full-text repository search |
++| `getRepo(input)` | `repos.get` | Get repository metadata |
++| `listForUser(input)` | `repos.listForUser` | List repos for a user |
++| `listForOrg(input)` | `repos.listForOrg` | List repos for an org |
++
++#### `ReviewsService`
++
++| Method | Octokit API | Description |
++|--------|------------|-------------|
++| `listReviews(owner, repo, pullNumber)` | `pulls.listReviews` | List all reviews on a PR |
++| `createReview(input)` | `pulls.createReview` | Submit a PR review (approve/request changes/comment) |
++| `updateReview(input)` | `pulls.updateReview` | Update a review body |
++| `createInlineComment(input)` | `pulls.createReviewComment` | Add an inline comment on a specific line |
++
++### Usage Example
++
++```typescript
++import { GitHubClient, IssuesService, gitHubClientLayer, issuesServiceLayer } from "@omnicode/github";
++import { Effect } from "effect";
++
++const program = IssuesService.pipe(
++  Effect.flatMap((issues) =>
++    issues.getIssue("octocat", "Hello-World", 1)
++  ),
++  Effect.flatMap((issue) =>
++    Effect.logInfo(`Issue #${issue.number}: ${issue.title}`)
++  ),
++);
++
++const runnable = program.pipe(
++  Effect.provide(issuesServiceLayer),
++  Effect.provide(gitHubClientLayer({
++    auth: { _tag: "token", token: process.env.GITHUB_TOKEN! },
++  })),
++);
++```
++
++---
++
++## AI Agent Lifecycle
++
++### Agent Base Class (`Agent.ts`)
++
++All agents extend `Agent<TInput, TOutput>` and follow a strict lifecycle:
++
++```
++run(input)
++  │
++  ├─ initialize(input)        // Setup: load models, validate config
++  ├─ execute(input)           // Core logic (abstract — must implement)
++  ├─ complete(output)         // Post-processing: logging, notifications
++  └─ cleanup()                // Teardown: always called, even on error
++         │
++         └─ Returns AgentResult<TOutput>
++```
++
++#### Lifecycle States
++
++```typescript
++type AgentLifecycle =
++  | "idle"          // Constructed, not yet run
++  | "initializing"  // initialize() in progress
++  | "ready"         // Initialized, about to execute
++  | "running"       // execute() in progress
++  | "completed"     // execute + complete successful
++  | "failed"        // Error thrown during lifecycle
++  | "cleanedUp";    // cleanup() called (final state)
++```
++
++#### AgentResult
++
++```typescript
++export interface AgentResult<TOutput = unknown> {
++  readonly agent: AgentType;
++  readonly success: boolean;
++  readonly output: TOutput;
++  readonly durationMs: number;
++  readonly error?: string;
++}
++```
++
++### Code Review Flow
++
++The `CodeReviewAgent` analyzes PR diffs and produces structured feedback:
++
++```
++CodeReviewAgent.execute(context: ReviewContext)
++  │
++  ├─ context contains: repo, prNumber, title, description,
++  │                    files (FileChange[]), existingComments, branches
++  │
++  ├─ For each file in context.files:
++  │   ├─ Split diff into lines
++  │   └─ For each pattern (built-in + extra):
++  │       └─ If pattern.test(file, lines) matches:
++  │           └─ Create ReviewComment (filePath, line, severity, message, suggestion)
++  │
++  ├─ Deduplicate comments by (filePath, line, rule)
++  └─ Return ReviewOutput { summary, comments, filesReviewed, issuesFound }
++```
++
++#### Built-in Detection Patterns
++
++| Severity | Rule | What It Detects |
++|----------|------|-----------------|
++| `warning` | `no-console-log` | `console.log()` / `console.debug()` calls |
++| `error` | `no-debugger` | `debugger` statements |
++| `warning` | `no-todo` | `// TODO` comments |
++| `error` | `no-inner-html` | `.innerHTML =` assignments (XSS risk) |
++| `warning` | `sql-injection-risk` | Raw SQL string interpolation |
++| `info` | `large-dependency-import` | Importing entire `lodash` |
++| `warning` | `no-any` | TypeScript `: any` usage |
++| `info` | `long-function` | Diff hunks exceeding 100 lines |
++
++Plugins can add patterns via `addPatterns(...patterns)` or by extending `CodeReviewAgent`.
++
++### Issue Triage Flow
++
++The `IssueTriageAgent` classifies incoming issues and suggests labels, assignees, and priority:
++
++```
++IssueTriageAgent.execute(context: TriageContext)
++  │
++  ├─ context contains: repo, issueNumber, title, body,
++  │                    existingLabels, author
++  │
++  ├─ Score each ClassificationRule against title + body:
++  │   └─ For each pattern in rule, if regex matches → increment score
++  │
++  ├─ Select best-matching rule (highest score)
++  ├─ If no match → default to "other" type
++  │
++  ├─ Build TriageOutput:
++  │   ├─ issueType: "bug" | "feature" | "enhancement" | "documentation"
++  │   │             | "question" | "refactor" | "performance" | "security" | "other"
++  │   ├─ suggestedLabels: existing labels + matched rule label
++  │   ├─ suggestedAssignees: based on priority/type heuristics
++  │   ├─ priority: "critical" | "high" | "medium" | "low"
++  │   ├─ confidence: 0.0–1.0 based on match score
++  │   └─ reasoning: human-readable explanation
++  └─ Return TriageOutput
++```
++
++#### Classification Rules
++
++| Type | Trigger Patterns | Default Priority |
++|------|-----------------|-----------------|
++| `bug` | bug, crash, error, broken, regression | `high` |
++| `feature` | feature, request, implement, proposal | `medium` |
++| `enhancement` | improve, optimize, enhance | `medium` |
++| `documentation` | docs, documentation, readme, typo | `low` |
++| `question` | question, how, why, help | `low` |
++| `performance` | performance, slow, latency, leak | `medium` |
++| `security` | security, vulnerability, xss, cve | `critical` |
++| `refactor` | refactor, cleanup, tech debt | `low` |
++
++### Agent Registry & Orchestrator
++
++The `AgentRegistry` is the central dispatch point:
++
++```typescript
++export class AgentRegistry {
++  register<TInput, TOutput>(agent: Agent<TInput, TOutput>): this;
++  registerOrReplace<TInput, TOutput>(agent: Agent<TInput, TOutput>): this;
++  unregister(type: AgentType): boolean;
++  get<TInput, TOutput>(type: AgentType): Agent<TInput, TOutput> | undefined;
++  require<TInput, TOutput>(type: AgentType): Agent<TInput, TOutput>;
++  dispatch<TInput, TOutput>(type: AgentType, input: TInput): Promise<AgentResult<TOutput>>;
++  listTypes(): AgentType[];
++  listAgents(): AgentDescriptor[];
++  clear(): void;
++}
++```
++
++The **orchestrator** (planned — server-level integration) will:
++
++1. Subscribe to plugin hooks (e.g., `"pr:created"`)
++2. Look up registered agents by capability (e.g., agents with `"code-review"` capability)
++3. Build the appropriate context (e.g., `ReviewContext` from PR data)
++4. Call `registry.dispatch("code-review", context)`
++5. Post results back to the provider (e.g., submit review comments to the PR)
++6. Emit `"agent:after_run"` hook for downstream plugins
++
++### Agent Capabilities
++
++```typescript
++type AgentCapability =
++  | "code-review"
++  | "issue-triage"
++  | "pr-analysis"
++  | "code-generation"
++  | "testing"
++  | "documentation"
++  | "security-analysis";
++```
++
++---
++
++## Web UI Extension Points
++
++### Navigation Targets
++
++The web UI exposes four named navigation zones where plugins can inject routes:
++
++```
++┌──────────────────────────────────────────────────┐
++│  ┌──────┐  TOP TOOLBAR                           │
++│  │  ●   │  [PluginBtn] [PluginBtn2]              │
++│  ├──────┴───────────────────────────────────────┤ │
++│  │ SIDEBAR        │  MAIN CONTENT AREA          │ │
++│  │                │                             │ │
++│  │  Chat          │  ┌─────────────────────┐    │ │
++│  │  Repos         │  │                     │    │ │
++│  │  Issues  ◀──   │  │  Plugin Page        │    │ │
++│  │  Agents        │  │  Content            │    │ │
++│  │  ─────────     │  │                     │    │ │
++│  │  My Plugin     │  └─────────────────────┘    │ │
++│  │                │                             │ │
++│  ├────────────────┴─────────────────────────────┤ │
++│  │  SETTINGS: [Profile] [Plugin Settings]       │ │
++│  └──────────────────────────────────────────────┘ │
++│                                                    │
++│  DROPDOWN: [Account] [Logout] [Plugin Action]     │
++└────────────────────────────────────────────────────┘
++```
++
++### Route Registration
++
++Plugin routes are contributed via `RouteContribution` and registered with TanStack Router. The web app reads `getPluginRoutes()` from the `PluginRegistry` and dynamically adds them to the router configuration.
++
++### Paint System
++
++Paints allow plugins to inject React components at specific DOM targets:
++
++```typescript
++// Example: Plugin wants to add a badge after the PR title
++const paint: PaintContribution = {
++  id: "my-pr-quality-badge",
++  target: "pr-title",
++  position: "after",
++  component: "QualityBadge",
++};
++```
++
++The web app reads `getPluginPaints()` and renders paints via a `<PaintSlot target="...">` component that iterates registered paints, sorted by position order.
++
++### Custom Routes
++
++Plugins can contribute full-page routes with their own React components. Components are referenced by string identifier and resolved through a component registry that plugins populate during activation.
++
++### UI Data Flow
++
++```
++Octokit REST API
++      │
++      ▼
++GitHubClient (Effect error wrapping)
++      │
++      ▼
++Service Layer (IssuesService, PullRequestsService, etc.)
++  Returns Effect<DomainType, GitHubError>
++      │
++      ▼
++Server WebSocket Route (wsServer.ts)
++  Wraps Effect in request/response pattern
++      │
++      ▼
++WebSocket Push (channel: orchestration.domainEvent)
++      │
++      ▼
++React Client (lib/ actions + TanStack Router loaders)
++  Effect.runPromise on WebSocket responses
++      │
++      ▼
++UI Components (React + Tailwind + shadcn/ui)
++```
++
++---
++
++## Data Flow
++
++### End-to-End: Opening an Issue
++
++```
++User clicks "Issues" in sidebar
++  │
++  ├─ TanStack Router navigates to /issues/:owner/:repo
++  ├─ Route loader calls client-side action
++  │   └─ WebSocket request to server: { method: "issues.listIssues", params: { owner, repo } }
++  │
++  ▼
++Server WebSocket route
++  ├─ Calls IssuesService.listIssues(input)
++  │   └─ Effect flows through GitHubClient.request()
++  │       └─ GitHubClient wraps Octokit response in Effect
++  │           └─ Mapper converts snake_case → camelCase
++  │
++  ├─ If error: classifyGitHubError → typed Error → response with error tag
++  ├─ If success: response with data
++  └─ Push result back over WebSocket
++      │
++      ▼
++React client receives response
++  ├─ Updates local store / cache
++  └─ Renders IssueList with IssueView cards
++```
++
++### End-to-End: Code Review Agent Executes on PR
++
++```
++PR is created (or user triggers review manually)
++  │
++  ├─ Webhook / user action → server routes to AgentOrchestrator
++  │
++  ▼
++AgentOrchestrator
++  ├─ Calls "agent:before_run" hook (notifies plugins)
++  ├─ Looks up "code-review" agent from AgentRegistry
++  ├─ Builds ReviewContext:
++  │   ├─ repo, prNumber, title, description
++  │   ├─ PullRequestsService.listPullRequestFiles() → FileChange[]
++  │   ├─ ReviewsService.listReviews() → existingComments
++  │   └─ branches
++  │
++  ├─ Calls AgentRegistry.dispatch("code-review", reviewContext)
++  │   └─ CodeReviewAgent.execute(context)
++  │       └─ Returns ReviewOutput { summary, comments, ... }
++  │
++  ├─ Submits review via ReviewsService.createReview()
++  ├─ Calls "agent:after_run" hook (notifies plugins)
++  └─ Returns result to caller
++```
++
++### Plugin Hook Firing Sequence
++
++```
++Event occurs (e.g., issue created)
++  │
++  ├─ Core service fires hook: hookEmitter.emit("issue:created", context)
++  │
++  ├─ HookEmitter sorts handlers by priority (descending)
++  ├─ For each handler:
++  │   ├─ Await handler(context)
++  │   ├─ If handler throws → log error, continue to next handler
++  │   └─ Continue
++  │
++  └─ All handlers complete → control returns to caller
++```
++
++---
++
++## Extension / Open Library Model
++
++### How Third Parties Contribute Providers
++
++Any plugin can contribute a new Git provider by providing a `ProviderContribution` in its manifest. The OmniCode core handles resolution:
++
++1. **Plugin declares** `contributes.providers` with provider metadata (type, baseUrl, auth method)
++2. **Plugin's agent** (or the plugin's `activate()` function) registers the provider implementation with the `SourceControlProviderRegistry` (from T3 Code)
++3. **Core's ProviderDispatcher** includes plugin-provided providers when matching remote URLs
++4. **UI automatically** renders provider-specific terminology (PR vs MR, etc.) via `ChangeRequestPresentation`
++
++#### Adding a New Provider (Example: Gitea)
++
++```typescript
++// my-gitea-plugin/src/index.ts
++import { OmniCodePlugin, type PluginContext } from "@omnicode/plugin";
++
++class GiteaProvider implements SourceControlProviderShape {
++  // Implement all required methods using Gitea's REST API
++}
++
++export default {
++  id: "gitea-provider",
++  activate(context: PluginContext) {
++    // Register with T3 Code's SourceControlProviderRegistry
++    // (hook available via context injection)
++    context.log("info", "Gitea provider activated");
++  },
++} satisfies OmniCodePlugin;
++```
++
++With manifest:
++
++```json
++{
++  "name": "gitea-provider",
++  "omnicode": {
++    "id": "gitea-provider",
++    "main": "dist/index.js",
++    "contributes": {
++      "providers": [{
++        "id": "gitea",
++        "name": "Gitea",
++        "type": "gitea",
++        "baseUrl": "https://gitea.com",
++        "authType": "token",
++        "capabilities": ["listPRs", "listIssues", "searchRepos"]
++      }]
++    }
++  }
++}
++```
++
++### How Third Parties Contribute Agents
++
++Agents contributed by plugins go through the same lifecycle as built-in agents:
++
++1. **Plugin declares** `contributes.agents` in manifest
++2. **Plugin's `activate()`** registers agent instances with the `AgentRegistry`
++3. **Agent Registry** makes them discoverable via `getAgents()` and dispatchable via `dispatch()`
++4. **Agent Orchestrator** can invoke them on matching events
++
++### Plugin Registration Workflow
++
++```
++Plugin Development
++  ├─ Write OmniCodePlugin class
++  ├─ Define manifest in package.json
++  └─ Build → publish (npm, local directory, or Git repo)
++
++Installation
++  └─ User places plugin in configured pluginDirs (configurable in OmniCodeConfig)
++
++Activation
++  ├─ Server starts → PluginLoader discovers plugins
++  ├─ PluginRegistry.loadAll(dirs)
++  │   ├─ discoverPlugins → validate manifests
++  │   └─ For each: loadModule → validate → activate()
++  └─ Plugin.activate(context) → register hooks, contributions, agents
++
++Runtime
++  ├─ Hooks fire → plugin handlers execute
++  ├─ UI renders contributed routes and paints
++  └─ Agent registry dispatches plugin agents
++
++Deactivation
++  ├─ Plugin deactivated → deactivate() called
++  ├─ HookEmitter.clear(pluginId) → removes all handlers
++  └─ PluginState → "inactive"
++```
++
++---
++
++## Worktrees
++
++OmniCode inherits T3 Code's full **git worktree** implementation, which is already production-ready in the base. T3 Code provides:
++
++### Worktree Branch Prefix
++
++```typescript
++// From packages/shared/src/git.ts
++export const WORKTREE_BRANCH_PREFIX = "t3code";
++```
++
++Worktree branches follow the pattern `t3code/<random-8-char-hex>` and are managed automatically.
++
++### T3 Code Worktree Operations (Inherited)
++
++| Operation | Description | Implementation Location |
++|-----------|-------------|------------------------|
++| **Create** | Create a linked worktree for isolated development | `apps/web/src/lib/sourceControlActions.ts` |
++| **List** | List all linked worktrees | `packages/shared/src/git.ts` (git worktree list) |
++| **Remove** | Prune and remove a worktree | `apps/web/src/lib/chatThreadActions.ts` |
++| **Cleanup** | Automatic stale worktree cleanup | `apps/web/src/worktreeCleanup.test.ts` |
++| **Branch sanitization** | Sanitize user input into valid Git ref names | `packages/shared/src/git.ts` |
++
++### How OmniCode Uses Worktrees
++
++OmniCode extends the worktree system for multi-provider workflows:
++
++1. **PR-Focused Worktrees** — When a user checks out a PR from any provider (GitHub/GitLab/etc.), OmniCode creates a worktree for isolated review and testing.
++2. **Agent Worktrees** — AI agents can create temporary worktrees to test fixes, apply patches, or create PR branches without disrupting the user's primary workspace.
++3. **Provider-Agnostic Worktrees** — Worktree creation works identically regardless of which Git hosting provider the repository is linked to.
++4. **Cleanup Integration** — The worktree cleanup subsystem integrates with the plugin hook system so plugins can react to worktree lifecycle events.
++
++### Worktree Data Flow (Agent Use Case)
++
++```
++User says "review PR #42 from octocat/Hello-World"
++  │
++  ├─ Orchestrator checks: is there an active worktree? → No
++  ├─ Creates worktree (git worktree add)
++  ├─ Fetches PR files via PullRequestsService
++  ├─ Runs CodeReviewAgent on file diffs
++  ├─ Submits review via ReviewsService
++  └─ Optionally removes worktree (or leaves for user inspection)
++```
++
++---
++
++## Appendices
++
++### A. OmniCodeConfig Reference
++
++```typescript
++export interface OmnicodeConfig {
++  /** Octokit authentication token for GitHub API access. */
++  githubToken?: string;
++  /** Base URL for GitHub API (for GHES self-hosted instances). */
++  githubBaseUrl?: string;
++  /** AI provider configuration. */
++  aiProvider?: AiProviderConfig;
++  /** Directories to scan for OmniCode plugins. */
++  pluginDirs?: string[];
++  /** Enable or disable the OmniCode integration. */
++  enabled?: boolean;               // default: false
++  /** Log level for OmniCode services. */
++  logLevel?: "debug" | "info" | "warn" | "error";  // default: "info"
++}
++```
++
++### B. AiProviderConfig Reference
++
++```typescript
++export interface AiProviderConfig {
++  kind: "openai" | "anthropic" | "google" | "azure" | "ollama" | "custom";
++  apiKey?: string;
++  baseUrl?: string;
++  model?: string;
++  maxTokens?: number;
++  temperature?: number;
++  organizationId?: string;
++  projectId?: string;
++}
++```
++
++### C. T3 Code Interfaces Extended by OmniCode
++
++| T3 Code Interface | Role | OmniCode Extension |
++|-------------------|------|-------------------|
++| `SourceControlProviderShape` | Provider abstraction (gh CLI-based) | `@omnicode/github` services add Octokit-based GitHub provider |
++| `SourceControlProviderRegistry` | Dispatches providers by remote URL | Plugin `ProviderContribution` adds new providers dynamically |
++| `VcsDriver` | Git/Jujutsu VCS abstraction | Unchanged — worktree operations use VcsDriver |
++| `SourceControlProviderKind` | Provider kind enum (`github`, `gitlab`, etc.) | Extended by plugins via `ProviderType` (`"gitea"`, `"custom"`) |
++| `ChangeRequest` | PR/MR data structure | Used by `PullRequestsService` to correlate Octokit data |
++
++### D. Glossary
++
++| Term | Definition |
++|------|-----------|
++| **Plugin** | A third-party extension packaged as a module with a manifest |
++| **Agent** | An AI agent implementing the `Agent` base class for automated tasks |
++| **Provider** | A Git hosting backend (GitHub, GitLab, etc.) |
++| **Paint** | A UI decoration that injects content at named DOM targets |
++| **Hook** | A plugin lifecycle event (e.g., `pr:created`, `agent:before_run`) |
++| **Extension Point** | A named location in the UI or system where plugins can contribute |
++| **Worktree** | A linked Git working directory for parallel branch development |
++| **Octokit** | The official GitHub REST API client library for JavaScript |
++| **Effect** | The TypeScript library for typed, composable, resource-safe programming |
++
++---
++
++> **OmniCode** — Because your code workspace should be as extensible as your imagination.
