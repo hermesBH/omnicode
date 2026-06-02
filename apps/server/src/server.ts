@@ -5,13 +5,13 @@ import { FetchHttpClient, HttpRouter, HttpServer } from "effect/unstable/http";
 import { ServerConfig } from "./config.ts";
 import {
   omnicodeRoutesLayer,
-} from "./omnicode/omnicodeRouter";
+} from "./omnicode/omnicodeRouter.ts";
 import {
   OmniCodeGitHubServicesLive,
   OmniCodeServerConfig,
   OmniCodeServicesLive,
   type OmniCodeServerConfigShape,
-} from "./omnicode/omnicodeServer";
+} from "./omnicode/omnicodeServer.ts";
 import {
   attachmentsRouteLayer,
   otlpTracesProxyRouteLayer,
