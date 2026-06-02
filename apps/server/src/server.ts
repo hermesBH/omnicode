@@ -4,6 +4,15 @@ import { FetchHttpClient, HttpRouter, HttpServer } from "effect/unstable/http";
 
 import { ServerConfig } from "./config.ts";
 import {
+  omnicodeRoutesLayer,
+} from "@t3tools/core/omnicode-router";
+import {
+  OmniCodeServicesLive,
+  OmniCodeGitHubServicesLive,
+  OmniCodeServerConfig,
+  type OmniCodeServerConfigShape,
+} from "@t3tools/core/omnicode";
+import {
   attachmentsRouteLayer,
   otlpTracesProxyRouteLayer,
   projectFaviconRouteLayer,
@@ -319,6 +328,8 @@ export const makeRoutesLayer = Layer.mergeAll(
   serverEnvironmentRouteLayer,
   staticAndDevRouteLayer,
   websocketRpcRouteLayer,
+  // OmniCode REST API routes
+  omnicodeRoutesLayer,
 ).pipe(Layer.provide(browserApiCorsLayer));
 
 export const makeServerLayer = Layer.unwrap(
