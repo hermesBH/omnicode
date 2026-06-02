@@ -77,14 +77,6 @@
       "dependsOn": [
         "@omnicode/contracts"
       ]
-    },
-    "@t3tools/core": {
-      "dependsOn": [
-        "@omnicode/ai",
-        "@omnicode/github",
-        "@omnicode/plugin",
-        "@omnicode/contracts"
-      ]
     }
   }
 }

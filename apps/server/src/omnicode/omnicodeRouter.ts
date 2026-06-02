@@ -600,7 +600,7 @@ export const omnicodeWorktreeRouteLayer: Layer.Layer<
  * Wire this into server.ts's `makeRoutesLayer`:
  *
  * ```ts
- * import { omnicodeRoutesLayer } from "@t3tools/core/omnicode-router";
+ * import { omnicodeRoutesLayer } from "./omnicodeRouter";
  *
  * const makeRoutesLayer = Layer.mergeAll(
  *   ...existingRoutes,

@@ -49,7 +49,7 @@ packages/
 ├── omnicode-plugin/      → Plugin system
 ├── omnicode-github/      → GitHub API client
 ├── omnicode-ai/          → AI agents
-packages/core/src/omnicode/ → Server + REST router
+apps/server/src/omnicode/ → Server + REST router
 apps/web/src/             → UI routes
 patches/                  → All 15 patch files
 apply-omnicode.sh         → Apply script
