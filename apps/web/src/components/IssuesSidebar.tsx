@@ -10,7 +10,6 @@
  */
 
 import type { EnvironmentId } from "@t3tools/contracts";
-import { scopeProjectRef } from "@t3tools/client-runtime";
 import {
   AlertTriangleIcon,
   BugIcon,
@@ -37,8 +36,6 @@ import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Skeleton } from "./ui/skeleton";
 import { cn } from "~/lib/utils";
-import { useVcsStatus } from "~/lib/vcsStatusState";
-import { createProjectSelectorByRef, useStore } from "~/store";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -55,66 +52,6 @@ export interface GitHubIssue {
   readonly author: string;
   readonly commentsCount: number;
   readonly body?: string;
-}
-
-// ---------------------------------------------------------------------------
-// Git remote URL parser (SSH and HTTPS)
-// ---------------------------------------------------------------------------
-
-function parseGitRemote(url: string): { owner: string; repo: string } | null {
-  if (!url) return null;
-  // SSH: git@github.com:owner/repo.git
-  const ssh = url.match(/github\.com[:/]([^/]+)\/([^/.]+?)(?:\.git)?$/);
-  if (ssh) return { owner: ssh[1], repo: ssh[2] };
-  // HTTPS: https://github.com/owner/repo.git
-  const https = url.match(/github\.com\/([^/]+)\/([^/.]+?)(?:\.git)?$/);
-  if (https) return { owner: https[1], repo: https[2] };
-  return null;
-}
-
-// ---------------------------------------------------------------------------
-// GitHub API helpers (client-side, CORS-enabled)
-// ---------------------------------------------------------------------------
-
-const GITHUB_API = "https://api.github.com";
-
-async function fetchIssuesFromGitHub(
-  owner: string,
-  repo: string,
-  state: "open" | "closed" | "all" = "open",
-  signal?: AbortSignal,
-): Promise<GitHubIssue[]> {
-  const url = `${GITHUB_API}/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/issues?state=${state}&per_page=50&sort=updated&direction=desc`;
-  const resp = await fetch(url, {
-    headers: {
-      Accept: "application/vnd.github.v3+json",
-      "User-Agent": "OmniCode-T3Code",
-    },
-    signal,
-  });
-  if (!resp.ok) {
-    if (resp.status === 404) throw new Error("Repository not found or private");
-    if (resp.status === 403) throw new Error("Rate limited — try again later");
-    throw new Error(`GitHub API error: ${resp.status} ${resp.statusText}`);
-  }
-  const data: Record<string, unknown>[] = await resp.json();
-  return data
-    .filter((item) => !item.pull_request) // exclude PRs from issue list
-    .map((item) => ({
-      number: item.number as number,
-      title: item.title as string,
-      state: (item.state as "open" | "closed") ?? "open",
-      htmlUrl: (item.html_url as string) ?? "",
-      labels: ((item.labels as Record<string, unknown>[]) ?? []).map((l) => ({
-        name: String(l.name ?? ""),
-        color: String(l.color ?? "ccc"),
-      })),
-      createdAt: (item.created_at as string) ?? "",
-      updatedAt: (item.updated_at as string) ?? "",
-      author: ((item.user as Record<string, unknown>)?.login as string) ?? "unknown",
-      commentsCount: (item.comments as number) ?? 0,
-      body: (item.body as string) ?? undefined,
-    }));
 }
 
 // ---------------------------------------------------------------------------
@@ -162,27 +99,6 @@ export default function IssuesSidebar({
   cwd,
   environmentId,
 }: IssuesSidebarProps) {
-  // Derive the project ref from cwd + environmentId so we can read VCS status
-  const project = useStore(
-    useMemo(() => {
-      if (!environmentId || !cwd) return undefined;
-      // We match projects by environment + cwd prefix
-      return (state: Record<string, unknown>) => {
-        // Use the fact that selectProjectsAcrossEnvironments gives us projects
-        const projects = (state as any)._projectsByEnvironment?.[environmentId];
-        if (!projects) return undefined;
-        return Object.values(projects).find(
-          (p: any) => p.cwd === cwd || cwd.startsWith(p.cwd),
-        );
-      };
-    }, [environmentId, cwd]),
-  );
-
-  const gitStatusQuery = useVcsStatus({
-    environmentId: environmentId ?? "",
-    cwd,
-  });
-
   const [data, setData] = useState<{
     owner: string;
     repo: string;
@@ -197,12 +113,18 @@ export default function IssuesSidebar({
   const [searchQuery, setSearchQuery] = useState("");
   const abortRef = useRef<AbortController | null>(null);
 
-  // Derive owner/repo from VCS status remote URL
+  // Derive owner/repo — first try OmniCode server API, then fall back to parsing from cwd
   const repoInfo = useMemo(() => {
-    const remoteUrl = gitStatusQuery.data?.remotes?.[0]?.url;
-    if (!remoteUrl) return null;
-    return parseGitRemote(remoteUrl);
-  }, [gitStatusQuery.data]);
+    // Already resolved via server API in detectRepo
+    if (data.owner && data.repo) return { owner: data.owner, repo: data.repo };
+    // Fallback: try parsing from cwd path (folder name)
+    if (cwd) {
+      const parts = cwd.replace(/\/+$/, "").split("/");
+      const folder = parts[parts.length - 1];
+      if (folder && !folder.startsWith(".")) return { owner: "", repo: folder };
+    }
+    return null;
+  }, [data.owner, data.repo, cwd]);
 
   // Fetch issues when repo info changes
   const fetchIssues = useCallback(async () => {
@@ -215,17 +137,80 @@ export default function IssuesSidebar({
     setData((prev) => ({ ...prev, loading: true, error: null }));
 
     try {
-      const issues = await fetchIssuesFromGitHub(
-        repoInfo.owner,
-        repoInfo.repo,
-        "all",
-        controller.signal,
-      );
+      // Step 1: If we don't have owner yet, try the OmniCode detect-remote API
+      let owner = repoInfo.owner;
+      let repo = repoInfo.repo;
+
+      if (!owner && cwd) {
+        try {
+          const detectResp = await fetch(
+            `/api/omnicode/projects/detect-remote?cwd=${encodeURIComponent(cwd)}`,
+            { signal: controller.signal },
+          );
+          if (detectResp.ok) {
+            const detectBody = await detectResp.json();
+            if (detectBody.owner && detectBody.repo) {
+              owner = detectBody.owner;
+              repo = detectBody.repo;
+            }
+          }
+        } catch {
+          // API unavailable — fall through with folder-name fallback
+        }
+      }
+
+      if (!owner || !repo) throw new Error("Could not determine the GitHub repository");
+
+      // Step 2: Fetch issues from GitHub API
+      const apiUrl = owner
+        ? `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/issues?state=all&per_page=50&sort=updated&direction=desc`
+        : `https://api.github.com/search/issues?q=repo:${encodeURIComponent(repo)}+is:issue&per_page=50`;
+
+      const resp = await fetch(apiUrl, {
+        headers: {
+          Accept: "application/vnd.github.v3+json",
+          "User-Agent": "OmniCode-T3Code",
+        },
+        signal: controller.signal,
+      });
+
+      if (!resp.ok) {
+        if (resp.status === 404) throw new Error(`Repository "${owner ? `${owner}/` : ""}${repo}" not found or private`);
+        if (resp.status === 403) throw new Error("Rate limited by GitHub — try again later");
+        throw new Error(`GitHub API error: ${resp.status}`);
+      }
+
+      let rawData: Record<string, unknown>[];
+      if (owner) {
+        rawData = (await resp.json()) as Record<string, unknown>[];
+      } else {
+        const searchBody = (await resp.json()) as Record<string, unknown>;
+        rawData = (searchBody.items ?? []) as Record<string, unknown>[];
+      }
+
+      const issues: GitHubIssue[] = rawData
+        .filter((item) => !item.pull_request)
+        .map((item) => ({
+          number: item.number as number,
+          title: item.title as string,
+          state: (item.state as "open" | "closed") ?? "open",
+          htmlUrl: (item.html_url as string) ?? "",
+          labels: ((item.labels as Record<string, unknown>[]) ?? []).map((l) => ({
+            name: String(l.name ?? ""),
+            color: String(l.color ?? "ccc"),
+          })),
+          createdAt: (item.created_at as string) ?? "",
+          updatedAt: (item.updated_at as string) ?? "",
+          author: ((item.user as Record<string, unknown>)?.login as string) ?? "unknown",
+          commentsCount: (item.comments as number) ?? 0,
+          body: (item.body as string) ?? undefined,
+        }));
+
       if (controller.signal.aborted) return;
 
       setData({
-        owner: repoInfo.owner,
-        repo: repoInfo.repo,
+        owner,
+        repo,
         issues,
         loading: false,
         error: null,
@@ -239,7 +224,7 @@ export default function IssuesSidebar({
         error: err instanceof Error ? err.message : "Failed to fetch issues",
       }));
     }
-  }, [repoInfo]);
+  }, [repoInfo, cwd]);
 
   // Fetch on mount and when repo changes
   useEffect(() => {
