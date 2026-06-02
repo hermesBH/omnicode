@@ -1,4 +1,4 @@
-# OmniCode — Patch Pack for T3 Code
+# OmniCode — Patch for T3 Code
 
 Extends T3 Code with an integrated GitHub issues sidebar, top-bar toggle button, and right-side diffpanel. Pulls issues live from the GitHub REST API — no server config needed.
 
@@ -11,8 +11,6 @@ bash /path/to/omnicode/patches/apply-omnicode.sh --target .
 bun install
 bun run dev
 ```
-
-The apply script uses a **single combined patch** (`omnicode.patch`) — no sequential dependency issues. It also falls back to individual patches (0001–0009) if available.
 
 ## What You Get
 
@@ -27,45 +25,25 @@ The apply script uses a **single combined patch** (`omnicode.patch`) — no sequ
 
 | Area | Files | Description |
 |------|-------|-------------|
-| Infrastructure | `package.json`, `turbo.json`, `tsconfig.base.json` | Workspace config, catalog entries (`@octokit/rest`, etc.), turbo pipeline |
+| Infrastructure | `package.json`, `turbo.json` | Workspace config, catalog entries (`@octokit/rest`, etc.) |
 | Contracts | `packages/omnicode-contracts/` | Effect Schema types for repos, issues, agents, extensions |
 | Plugin | `packages/omnicode-plugin/` | Extensible plugin system (discovery, registry, hooks) |
 | GitHub | `packages/omnicode-github/` | Octokit-based API client (Issues, PRs, Repos, Reviews) |
 | AI | `packages/omnicode-ai/` | Agent framework + CodeReviewAgent, IssueTriageAgent |
-| Server | `packages/core/`, `apps/server/` | OmniCode service layer + REST router + server DI wiring |
+| Server | `apps/server/src/omnicode/`, `apps/server/src/server.ts` | OmniCode service layer + REST router + server DI wiring |
 | Web UI | `apps/web/src/components/IssuesSidebar.tsx`, `BranchToolbar.tsx`, `ChatView.tsx`, `ChatHeader.tsx`, routes | Right-side issues panel + top-bar toggle |
 | Docs | `SPEC.md`, `README.md` | Architecture specification |
 
-## Requirements
-
-- T3 Code checkout at https://github.com/pingdotgg/t3code.git
-- Bun package manager
-- The patch works on macOS and Linux
-- For private repos: set `GITHUB_TOKEN` env var
-
-## How the Issues Sidebar Works
-
-```
-1. User opens a project in T3 Code
-2. Click the ◉ button in the top bar (BranchToolbar)
-3. Right sidebar opens (same pattern as DiffPanel)
-4. Repo detection:
-   → Tries OmniCode server API (/api/omnicode/projects/detect-remote) for full owner/repo
-   → Falls back to project folder name
-5. Fetches issues from api.github.com (public repos only, 60 req/hr rate limit)
-6. Issues render as clickable cards → click opens GitHub issue
-```
-
 ## Troubleshooting
 
-**`ERR_MODULE_NOT_FOUND: Cannot find package '@t3tools/core'`**
-→ Run `bun install` again. The patch adds workspace packages that need to be linked.
+**`ERR_MODULE_NOT_FOUND` for `effect` or other packages**
+→ Run `bun install`. If that fails, delete `node_modules` and `bun.lock` and run `bun install` again.
 
-**`bun install` fails with dependency resolution errors**
-→ Make sure you're running a recent Bun version (`bun --version` ≥ 1.1). The patch adds `@octokit/rest` to the dependency catalog.
+**`bun install` fails**
+→ Make sure Bun ≥ 1.1 is installed. The patch adds `@octokit/rest` to the dependency catalog.
 
-**Patches won't apply (conflicts)**
-→ Use the combined `omnicode.patch` instead of individual patches. Make sure the working tree is clean before applying.
+**Patches won't apply**
+→ Reset the working tree: `git checkout -- . && git clean -fd`. Then re-apply.
 
 ## No Behavior Changed
 
